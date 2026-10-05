@@ -1,0 +1,573 @@
+import { loadBrand } from '../core/brand.js';
+import { renderSlide, textStyle } from '../core/render.js';
+import { newDeck, nextColor, syncSpans, photoSlices, deckWarnings, uid } from '../core/deck.js';
+import { clampPhoto, ZOOM_MAX } from '../core/photo.js';
+import { typo, layoutBlock } from '../core/text.js';
+import { slideFilename, makeZip, canvasToBytes, downloadBytes } from '../core/export.js';
+import { saveDraft, listDrafts, getDraft, deleteDraft, serialiseDeck } from '../core/storage.js';
+import { I18N } from './i18n.js';
+
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const BRAND_ID = params.get('brand') || 'media';
+const LS = { lang: 'dg_lang', lastColor: `dg_last_color_${BRAND_ID}` };
+
+const state = {
+  brand: null,
+  deck: null,
+  sel: 0,
+  draftId: null,
+  lang: lsGet(LS.lang) || 'pl',
+  guides: true,
+  dirty: false,
+};
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode */ } }
+const t = () => I18N[state.lang];
+
+// ───────────────────────── boot ─────────────────────────
+async function boot() {
+  state.brand = await loadBrand(`brands/${BRAND_ID}/`);
+  $('brandName').textContent = state.brand.name;
+  document.title = `${state.brand.name} · Post generator`;
+  buildColors();
+  buildTypeSeg();
+  buildAddMenu();
+  wire();
+  startNewDeck();
+  applyLang(state.lang);
+  new ResizeObserver(() => { sizeCanvas(); renderMain(); }).observe($('canvasWrap'));
+}
+
+function startNewDeck() {
+  const last = lsGet(LS.lastColor);
+  const colorId = last ? nextColor(state.brand, last) : undefined;
+  const format = state.deck ? state.deck.format : 'instagram';
+  state.deck = newDeck(state.brand, { format, colorId });
+  state.sel = 0;
+  state.draftId = null;
+  state.dirty = false;
+  refreshAll();
+}
+
+// ───────────────────────── rendering ─────────────────────────
+const preview = $('preview'), overlay = $('overlay');
+let viewScale = 1;
+
+function fmt() { return state.brand.formats[state.deck.format]; }
+
+function sizeCanvas() {
+  const wrap = $('canvasWrap');
+  const f = fmt();
+  const mw = wrap.clientWidth, mh = wrap.clientHeight;
+  if (mw <= 0 || mh <= 0) return;
+  viewScale = Math.min(mw / f.width, mh / f.height);
+  const dpr = window.devicePixelRatio || 1;
+  for (const c of [preview, overlay]) {
+    c.width = Math.round(f.width * viewScale * dpr);
+    c.height = Math.round(f.height * viewScale * dpr);
+    c.style.width = `${f.width * viewScale}px`;
+    c.style.height = `${f.height * viewScale}px`;
+  }
+}
+
+let slideWarnings = [];   // per slide, from the last full render
+
+function renderMain() {
+  if (!state.brand) return;
+  const dpr = window.devicePixelRatio || 1;
+  const ctx = preview.getContext('2d');
+  ctx.setTransform(viewScale * dpr, 0, 0, viewScale * dpr, 0, 0);
+  const { warnings } = renderSlide(ctx, state.brand, state.deck, state.sel);
+  slideWarnings[state.sel] = warnings;
+  drawOverlay();
+  renderPanelStatus();
+}
+
+function drawOverlay() {
+  const dpr = window.devicePixelRatio || 1;
+  const ctx = overlay.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  ctx.setTransform(viewScale * dpr, 0, 0, viewScale * dpr, 0, 0);
+  const f = fmt();
+  const px = 1 / viewScale; // one screen pixel in format units
+
+  if (state.guides) {
+    const z = f.safeZone;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,255,9,.9)';
+    ctx.lineWidth = 1.5 * px;
+    ctx.setLineDash([8 * px, 6 * px]);
+    ctx.strokeRect(z.x, z.y, z.w, z.h);
+    ctx.restore();
+  }
+
+  // Seams: mark the slide edges where the photo continues onto a neighbour.
+  const s = photoSlices(state.deck)[state.sel];
+  const card = state.brand.cards[state.deck.slides[state.sel].type];
+  if (s && s.span > 1 && card.photo) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,190,0,.9)';
+    const w = 6 * px, a = f.photoArea;
+    if (s.index > 0) ctx.fillRect(0, a.y, w, a.h);
+    if (s.index < s.span - 1) ctx.fillRect(f.width - w, a.y, w, a.h);
+    ctx.restore();
+  }
+}
+
+/** Re-render every thumbnail (cheap: drawn at thumbnail scale). */
+function renderStrip() {
+  const strip = $('strip');
+  const f = fmt();
+  const TH = 132, scale = TH / f.height, TW = Math.round(f.width * scale);
+  const dpr = window.devicePixelRatio || 1;
+  const slices = photoSlices(state.deck);
+  const dw = deckWarnings(state.deck);
+
+  strip.innerHTML = '';
+  slideWarnings = [];
+  state.deck.slides.forEach((slide, i) => {
+    const item = document.createElement('button');
+    item.className = 'thumb' + (i === state.sel ? ' selected' : '');
+    const s = slices[i];
+    if (s && s.span > 1) {
+      if (s.index > 0) item.classList.add('span-left');
+      if (s.index < s.span - 1) item.classList.add('span-right');
+    }
+    const c = document.createElement('canvas');
+    c.width = TW * dpr; c.height = TH * dpr;
+    c.style.width = `${TW}px`; c.style.height = `${TH}px`;
+    const ctx = c.getContext('2d');
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    const { warnings } = renderSlide(ctx, state.brand, state.deck, i, { slices });
+    const extra = dw.filter(w => w.slide === i);
+    slideWarnings[i] = [...warnings, ...extra];
+
+    const num = document.createElement('span');
+    num.className = 'num'; num.textContent = i + 1;
+    item.append(c, num);
+    if (slideWarnings[i].length) {
+      const b = document.createElement('span');
+      b.className = 'badge'; b.textContent = '!';
+      item.append(b);
+    }
+    item.onclick = () => select(i);
+    strip.append(item);
+  });
+}
+
+// ───────────────────────── panel ─────────────────────────
+function current() { return state.deck.slides[state.sel]; }
+
+function refreshPanel() {
+  const slide = current();
+  const card = state.brand.cards[slide.type];
+  const n = state.deck.slides.length;
+  $('slideTitle').textContent = t().of(state.sel + 1, n);
+  $('moveLeftBtn').disabled = state.sel === 0;
+  $('moveRightBtn').disabled = state.sel === n - 1;
+
+  document.querySelectorAll('#typeSeg button').forEach(b => b.classList.toggle('active', b.dataset.type === slide.type));
+
+  $('textField').hidden = !card.text;
+  if (card.text && $('textInput').value !== (slide.text || '')) $('textInput').value = slide.text || '';
+
+  $('photoField').hidden = !card.photo;
+  if (card.photo) {
+    const prev = state.deck.slides[state.sel - 1];
+    const canContinue = !!(prev && state.brand.cards[prev.type].photo && prev.photoId);
+    $('continueRow').hidden = !canContinue;
+    $('continueToggle').checked = canContinue && slide.photoId === prev.photoId;
+
+    const photo = slide.photoId && state.deck.photos[slide.photoId];
+    $('uploadBtn').textContent = photo ? t().replacePhoto : t().choosePhoto;
+    $('resetPhotoBtn').disabled = !photo;
+    $('zoomSlider').disabled = !photo;
+    if (photo) $('zoomSlider').value = Math.round(((photo.zoom || 1) - 1) / (ZOOM_MAX - 1) * 100);
+
+    const s = photoSlices(state.deck)[state.sel];
+    $('spanHint').textContent = s && s.span > 1 ? t().spanHint(s.index + 1, s.span) : '';
+  }
+  $('dragHint').classList.toggle('show', !!(card.photo && slide.photoId));
+}
+
+function renderPanelStatus() {
+  const slide = current();
+  const card = state.brand.cards[slide.type];
+  // Line counter
+  const lc = $('lineCounter');
+  if (card.text && slide.text && slide.text.trim()) {
+    const ctx = preview.getContext('2d');
+    const style = textStyle(state.brand, state.deck.format);
+    const lay = layoutBlock(ctx, typo(slide.text, state.brand.typography), style, fmt().safeZone, { maxLines: card.text.maxLines });
+    lc.textContent = t().lines(lay.lines.length, card.text.maxLines);
+    lc.classList.toggle('bad', lay.warnings.length > 0);
+  } else { lc.textContent = ''; lc.classList.remove('bad'); }
+
+  // Warnings
+  const box = $('warnings');
+  const ws = [...(slideWarnings[state.sel] || []), ...deckWarnings(state.deck).filter(w => w.slide === state.sel)];
+  const uniq = [...new Map(ws.map(w => [w.code, w])).values()];
+  box.innerHTML = '';
+  for (const w of uniq) {
+    const msg = t().w[w.code];
+    const p = document.createElement('div');
+    p.className = 'warning';
+    p.textContent = typeof msg === 'function' ? msg(w) : (msg || w.code);
+    box.append(p);
+  }
+}
+
+function refreshAll() {
+  syncSpans(state.deck);
+  document.querySelectorAll('#formatSeg button').forEach(b => b.classList.toggle('active', b.dataset.format === state.deck.format));
+  document.querySelectorAll('#colors button').forEach(b => b.classList.toggle('active', b.dataset.color === state.deck.colorId));
+  sizeCanvas();
+  renderStrip();
+  refreshPanel();
+  renderMain();
+}
+
+function select(i) {
+  state.sel = Math.max(0, Math.min(state.deck.slides.length - 1, i));
+  refreshAll();
+}
+
+function changed() { state.dirty = true; refreshAll(); }
+
+// ───────────────────────── builders ─────────────────────────
+function buildColors() {
+  const wrap = $('colors');
+  for (const c of state.brand.postColor.order) {
+    const p = state.brand.palette.find(x => x.id === c);
+    const b = document.createElement('button');
+    b.dataset.color = c; b.title = p.name; b.style.background = p.value;
+    b.onclick = () => { state.deck.colorId = c; changed(); };
+    wrap.append(b);
+  }
+}
+
+function buildTypeSeg() {
+  const seg = $('typeSeg');
+  for (const type of Object.keys(state.brand.cards)) {
+    const b = document.createElement('button');
+    b.dataset.type = type;
+    b.onclick = () => setType(type);
+    seg.append(b);
+  }
+}
+
+function buildAddMenu() {
+  const menu = $('addMenu');
+  for (const type of Object.keys(state.brand.cards)) {
+    const b = document.createElement('button');
+    b.dataset.type = type;
+    b.onclick = () => { addSlide(type); menu.classList.remove('open'); };
+    menu.append(b);
+  }
+}
+
+// ───────────────────────── actions ─────────────────────────
+function setType(type) {
+  const slide = current();
+  if (slide.type === type) return;
+  slide.type = type;
+  const card = state.brand.cards[type];
+  if (!card.photo) delete slide.photoId;
+  changed();
+}
+
+function addSlide(type) {
+  const slide = { id: uid('s'), type, text: '' };
+  state.deck.slides.splice(state.sel + 1, 0, slide);
+  state.sel += 1;
+  changed();
+}
+
+function moveSlide(dir) {
+  const a = state.sel, b = a + dir, s = state.deck.slides;
+  if (b < 0 || b >= s.length) return;
+  [s[a], s[b]] = [s[b], s[a]];
+  state.sel = b;
+  changed();
+}
+
+function deleteSlide() {
+  if (state.deck.slides.length <= 1) return toast(t().deleteLast);
+  state.deck.slides.splice(state.sel, 1);
+  state.sel = Math.min(state.sel, state.deck.slides.length - 1);
+  pruneUnusedPhotos();
+  changed();
+}
+
+function pruneUnusedPhotos() {
+  const used = new Set(state.deck.slides.map(s => s.photoId).filter(Boolean));
+  for (const id of Object.keys(state.deck.photos)) if (!used.has(id)) delete state.deck.photos[id];
+}
+
+function blobToImage(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Image failed to load'));
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+async function onFile(file) {
+  if (!file) return;
+  const image = await blobToImage(file);
+  const slide = current();
+  const existing = slide.photoId && state.deck.photos[slide.photoId];
+  if (existing) {
+    // Replace the picture of the whole panorama, keep its slides together.
+    Object.assign(existing, { image, blob: file, zoom: 1, offX: 0, offY: 0 });
+  } else {
+    const id = uid('p');
+    state.deck.photos[id] = { id, image, blob: file, span: 1, zoom: 1, offX: 0, offY: 0 };
+    slide.photoId = id;
+  }
+  changed();
+}
+
+function toggleContinue(on) {
+  const slide = current();
+  const prev = state.deck.slides[state.sel - 1];
+  if (on && prev && prev.photoId) {
+    slide.photoId = prev.photoId;
+    // Slides after this one that showed this slide's old photo keep it.
+  } else {
+    delete slide.photoId;
+  }
+  pruneUnusedPhotos();
+  changed();
+}
+
+function currentPhoto() {
+  const slide = current();
+  return slide.photoId ? state.deck.photos[slide.photoId] : null;
+}
+
+// Drag to pan
+let drag = null;
+function onPointerDown(e) {
+  const photo = currentPhoto();
+  if (!photo || !state.brand.cards[current().type].photo) return;
+  drag = { x: e.clientX, y: e.clientY, ox: photo.offX || 0, oy: photo.offY || 0 };
+  overlay.setPointerCapture(e.pointerId);
+  overlay.classList.add('dragging');
+}
+let rafPending = false;
+function onPointerMove(e) {
+  if (!drag) return;
+  const photo = currentPhoto();
+  photo.offX = drag.ox + (e.clientX - drag.x) / viewScale;
+  photo.offY = drag.oy + (e.clientY - drag.y) / viewScale;
+  clampPhoto(photo, fmt().photoArea);
+  if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; renderMain(); }); }
+}
+function onPointerUp() {
+  if (!drag) return;
+  drag = null;
+  overlay.classList.remove('dragging');
+  state.dirty = true;
+  renderStrip();
+}
+
+// ───────────────────────── export ─────────────────────────
+function renderFull(i) {
+  const f = fmt();
+  const c = document.createElement('canvas');
+  c.width = f.width; c.height = f.height;
+  renderSlide(c.getContext('2d'), state.brand, state.deck, i);
+  return c;
+}
+
+async function downloadSlide() {
+  const bytes = await canvasToBytes(renderFull(state.sel));
+  downloadBytes(bytes, slideFilename(state.deck, state.sel), 'image/png');
+  lsSet(LS.lastColor, state.deck.colorId);
+}
+
+async function downloadAll() {
+  renderStrip();
+  const bad = slideWarnings.filter(w => w && w.length).length;
+  if (bad && !confirm(t().exportWithIssues(bad))) return;
+  const files = [];
+  for (let i = 0; i < state.deck.slides.length; i++) {
+    files.push({ name: slideFilename(state.deck, i), data: await canvasToBytes(renderFull(i)) });
+  }
+  const zipName = slideFilename(state.deck, 0).replace(/_\d+\.png$/, '.zip');
+  downloadBytes(makeZip(files), zipName, 'application/zip');
+  lsSet(LS.lastColor, state.deck.colorId);
+}
+
+// ───────────────────────── drafts ─────────────────────────
+async function doSaveDraft() {
+  pruneUnusedPhotos();
+  const thumbCanvas = document.createElement('canvas');
+  const f = fmt();
+  thumbCanvas.width = 216; thumbCanvas.height = Math.round(216 * f.height / f.width);
+  const ctx = thumbCanvas.getContext('2d');
+  ctx.scale(216 / f.width, 216 / f.width);
+  renderSlide(ctx, state.brand, state.deck, 0);
+  const thumb = await new Promise(r => thumbCanvas.toBlob(r, 'image/jpeg', 0.85));
+
+  const photoBlobs = {};
+  for (const [id, p] of Object.entries(state.deck.photos)) if (p.blob) photoBlobs[id] = p.blob;
+
+  state.draftId = state.draftId || uid('d');
+  const first = state.deck.slides.find(s => s.text && s.text.trim());
+  await saveDraft({
+    id: state.draftId, brandId: BRAND_ID,
+    title: first ? first.text.replace(/\*/g, '').slice(0, 80) : '',
+    thumb, deck: serialiseDeck(state.deck), photoBlobs,
+  });
+  state.dirty = false;
+  toast(t().saved);
+}
+
+async function openDrafts() {
+  const list = (await listDrafts(BRAND_ID)).sort((a, b) => b.updatedAt - a.updatedAt);
+  const box = $('draftsList');
+  box.innerHTML = '';
+  if (!list.length) box.innerHTML = `<p class="empty">${t().noDrafts}</p>`;
+  for (const d of list) {
+    const row = document.createElement('div');
+    row.className = 'draft';
+    const img = document.createElement('img');
+    if (d.thumb) img.src = URL.createObjectURL(d.thumb);
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML = `<strong></strong><span></span>`;
+    meta.querySelector('strong').textContent = d.title || t().untitled;
+    meta.querySelector('span').textContent = new Date(d.updatedAt).toLocaleString(state.lang);
+    const open = document.createElement('button');
+    open.className = 'btn'; open.textContent = t().open;
+    open.onclick = () => loadDraft(d.id);
+    const del = document.createElement('button');
+    del.className = 'btn ghost'; del.textContent = t().remove;
+    del.onclick = async () => { if (confirm(t().confirmDeleteDraft)) { await deleteDraft(d.id); openDrafts(); } };
+    row.append(img, meta, open, del);
+    box.append(row);
+  }
+  $('draftsModal').hidden = false;
+}
+
+async function loadDraft(id) {
+  const d = await getDraft(id);
+  if (!d) return;
+  const deck = d.deck;
+  for (const [pid, p] of Object.entries(deck.photos)) {
+    const blob = d.photoBlobs[pid];
+    if (blob) { p.blob = blob; p.image = await blobToImage(blob); }
+  }
+  state.deck = deck;
+  state.draftId = d.id;
+  state.sel = 0;
+  state.dirty = false;
+  $('draftsModal').hidden = true;
+  refreshAll();
+}
+
+// ───────────────────────── misc UI ─────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg; el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2200);
+}
+
+function applyLang(lang) {
+  state.lang = lang;
+  lsSet(LS.lang, lang);
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const v = t()[el.dataset.i18n];
+    if (typeof v === 'string') el.textContent = v;
+  });
+  document.querySelectorAll('#typeSeg button, #addMenu button').forEach(b => { b.textContent = t().types[b.dataset.type]; });
+  document.querySelectorAll('#lang button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+  if (state.deck) { refreshPanel(); renderPanelStatus(); }
+}
+
+function wire() {
+  document.querySelectorAll('#formatSeg button').forEach(b => b.onclick = () => {
+    state.deck.format = b.dataset.format; changed();
+  });
+  document.querySelectorAll('#lang button').forEach(b => b.onclick = () => applyLang(b.dataset.lang));
+
+  let textRaf = false;
+  $('textInput').addEventListener('input', e => {
+    current().text = e.target.value;
+    state.dirty = true;
+    if (textRaf) return;
+    textRaf = true;
+    requestAnimationFrame(() => { textRaf = false; renderMain(); renderStrip(); });
+  });
+
+  $('uploadBtn').onclick = () => $('fileInput').click();
+  $('fileInput').onchange = e => { onFile(e.target.files[0]); e.target.value = ''; };
+  $('continueToggle').onchange = e => toggleContinue(e.target.checked);
+  $('resetPhotoBtn').onclick = () => {
+    const p = currentPhoto(); if (!p) return;
+    Object.assign(p, { zoom: 1, offX: 0, offY: 0 }); changed();
+  };
+  $('zoomSlider').oninput = e => {
+    const p = currentPhoto(); if (!p) return;
+    p.zoom = 1 + (Number(e.target.value) / 100) * (ZOOM_MAX - 1);
+    clampPhoto(p, fmt().photoArea);
+    renderMain();
+  };
+  $('zoomSlider').onchange = () => renderStrip();
+
+  overlay.addEventListener('pointerdown', onPointerDown);
+  overlay.addEventListener('pointermove', onPointerMove);
+  overlay.addEventListener('pointerup', onPointerUp);
+  overlay.addEventListener('pointercancel', onPointerUp);
+
+  // Drop a photo onto the canvas
+  const wrap = $('canvasWrap');
+  wrap.addEventListener('dragover', e => { e.preventDefault(); wrap.classList.add('drop'); });
+  wrap.addEventListener('dragleave', () => wrap.classList.remove('drop'));
+  wrap.addEventListener('drop', e => {
+    e.preventDefault(); wrap.classList.remove('drop');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/') && state.brand.cards[current().type].photo) onFile(f);
+  });
+
+  $('guidesToggle').onchange = e => { state.guides = e.target.checked; drawOverlay(); };
+  $('moveLeftBtn').onclick = () => moveSlide(-1);
+  $('moveRightBtn').onclick = () => moveSlide(1);
+  $('deleteBtn').onclick = deleteSlide;
+
+  $('addBtn').onclick = e => { e.stopPropagation(); $('addMenu').classList.toggle('open'); };
+  document.addEventListener('click', e => { if (!$('addMenu').contains(e.target)) $('addMenu').classList.remove('open'); });
+
+  $('newBtn').onclick = () => { if (!state.dirty || confirm(t().confirmNew)) startNewDeck(); };
+  $('saveDraftBtn').onclick = doSaveDraft;
+  $('draftsBtn').onclick = openDrafts;
+  $('draftsClose').onclick = () => { $('draftsModal').hidden = true; };
+  $('draftsModal').onclick = e => { if (e.target.id === 'draftsModal') $('draftsModal').hidden = true; };
+  $('downloadSlideBtn').onclick = downloadSlide;
+  $('downloadAllBtn').onclick = downloadAll;
+
+  document.addEventListener('keydown', e => {
+    if (e.target.matches('textarea, input')) return;
+    if (e.key === 'ArrowLeft') select(state.sel - 1);
+    if (e.key === 'ArrowRight') select(state.sel + 1);
+    if (e.key === 'Escape') $('draftsModal').hidden = true;
+  });
+  window.addEventListener('beforeunload', e => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
+}
+
+// Expose for tests / debugging.
+window.__dg = { state, refreshAll, select };
+
+boot().catch(err => {
+  console.error(err);
+  document.body.insertAdjacentHTML('afterbegin', `<div class="fatal">${err.message}</div>`);
+});

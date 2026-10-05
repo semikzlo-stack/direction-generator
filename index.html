@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Post generator</title>
+  <link rel="stylesheet" href="app/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-name" id="brandName">Post generator</div>
+
+    <div class="seg" id="formatSeg" role="tablist">
+      <button data-format="instagram" class="active">Instagram</button>
+      <button data-format="linkedin">LinkedIn</button>
+    </div>
+
+    <div class="colors" id="colors" aria-label="Post color"></div>
+
+    <div class="spacer"></div>
+
+    <button class="btn ghost" id="newBtn" data-i18n="newPost">New post</button>
+    <button class="btn ghost" id="draftsBtn" data-i18n="drafts">Drafts</button>
+    <button class="btn ghost" id="saveDraftBtn" data-i18n="saveDraft">Save draft</button>
+    <button class="btn" id="downloadSlideBtn" data-i18n="downloadSlide">Download slide</button>
+    <button class="btn primary" id="downloadAllBtn" data-i18n="downloadAll">Download all (ZIP)</button>
+
+    <div class="lang" id="lang">
+      <button data-lang="en">EN</button><button data-lang="pl">PL</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="stage">
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="preview"></canvas>
+        <canvas id="overlay"></canvas>
+        <div class="drag-hint" id="dragHint" data-i18n="dragHint">Drag the photo to move it</div>
+      </div>
+      <label class="guides-toggle"><input type="checkbox" id="guidesToggle" checked> <span data-i18n="guides">Show safe zone</span></label>
+    </section>
+
+    <aside class="panel" id="panel">
+      <div class="panel-head">
+        <h2 id="slideTitle">Slide 1</h2>
+        <div class="slide-actions">
+          <button class="icon" id="moveLeftBtn" title="Move left">←</button>
+          <button class="icon" id="moveRightBtn" title="Move right">→</button>
+          <button class="icon danger" id="deleteBtn" title="Delete">✕</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="label" data-i18n="cardType">Card type</div>
+        <div class="seg seg-block" id="typeSeg"></div>
+      </div>
+
+      <div class="field" id="textField">
+        <div class="label"><span data-i18n="text">Text</span><span class="counter" id="lineCounter"></span></div>
+        <textarea id="textInput" rows="6" spellcheck="true" lang="pl"></textarea>
+        <div class="hint" data-i18n="textHint">*word* — italic · Enter — new line</div>
+      </div>
+
+      <div class="field" id="photoField">
+        <div class="label" data-i18n="photo">Photo</div>
+        <label class="check" id="continueRow">
+          <input type="checkbox" id="continueToggle">
+          <span data-i18n="continuePhoto">Continue the photo from the previous slide</span>
+        </label>
+        <div class="row">
+          <button class="btn" id="uploadBtn" data-i18n="choosePhoto">Choose photo</button>
+          <button class="btn ghost" id="resetPhotoBtn" data-i18n="resetPhoto">Reset framing</button>
+        </div>
+        <div class="zoom-row">
+          <span data-i18n="zoom">Zoom</span>
+          <input type="range" id="zoomSlider" min="0" max="100" value="0">
+        </div>
+        <div class="hint" id="spanHint"></div>
+        <input type="file" id="fileInput" accept="image/*" hidden>
+      </div>
+
+      <div class="warnings" id="warnings"></div>
+    </aside>
+  </main>
+
+  <footer class="strip-wrap">
+    <div class="strip" id="strip"></div>
+    <div class="add-wrap">
+      <button class="btn add" id="addBtn">+</button>
+      <div class="add-menu" id="addMenu"></div>
+    </div>
+  </footer>
+
+  <div class="modal" id="draftsModal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 data-i18n="drafts">Drafts</h3>
+        <button class="icon" id="draftsClose">✕</button>
+      </div>
+      <div class="drafts-list" id="draftsList"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script type="module" src="app/app.js"></script>
+</body>
+</html>
