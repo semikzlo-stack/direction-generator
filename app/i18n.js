@@ -1,5 +1,6 @@
 export const I18N = {
   en: {
+    lineColor: 'Line', bgColor: 'Background',
     newPost: 'New post', drafts: 'Drafts', saveDraft: 'Save draft',
     downloadSlide: 'Download slide', downloadAll: 'Download all (ZIP)',
     dragHint: 'Drag the photo to move it', guides: 'Show safe zone',
@@ -28,6 +29,7 @@ export const I18N = {
     untitled: 'Untitled',
   },
   pl: {
+    lineColor: 'Linia', bgColor: 'Tło',
     newPost: 'Nowy post', drafts: 'Wersje robocze', saveDraft: 'Zapisz wersję',
     downloadSlide: 'Pobierz slajd', downloadAll: 'Pobierz wszystko (ZIP)',
     dragHint: 'Przeciągnij zdjęcie, aby zmienić kadr', guides: 'Pokaż strefę bezpieczną',

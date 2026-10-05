@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { renderSlide } from '../core/render.js';
 import { typo, parseRuns, layoutBlock } from '../core/text.js';
-import { newDeck, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes } from '../core/deck.js';
+import { newDeck, setPostColor, nextPostColors, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes } from '../core/deck.js';
 import { makeZip, slideFilename, slugify } from '../core/export.js';
 
 const brand = JSON.parse(readFileSync(new URL('../brands/media/config.json', import.meta.url)));
@@ -48,7 +48,7 @@ const photoA = { id: 'pA', image: await synthPhoto(3000, 4000, 10), zoom: 1, off
 const photoB = { id: 'pB', image: await synthPhoto(6000, 3000, 180), zoom: 1, offX: 0, offY: 0, span: 1 };
 
 function buildDeck(format) {
-  const d = newDeck(brand, { format, colorId: 'orchid-pink' });
+  const d = newDeck(brand, { format, lineColorId: 'lime-light', bgColorId: 'orchid-pink' });
   d.slides[0].text = '"Ostatni zamek" w księgarni Bęc Zmiany';
   d.slides[0].photoId = 'pA';
   d.slides[1].text = '„Ostatni zamek” pojawił się na witrynie sklepu Fundacji Bęc Zmiana. A wokół moc niezwykle pięknie zaprojektowanych książek.';
@@ -73,6 +73,8 @@ for (const format of ['instagram', 'linkedin']) {
     const c = createCanvas(fmt.width, fmt.height);
     const { warnings } = renderSlide(c.getContext('2d'), brand, deck, i);
     assert.deepEqual(warnings, [], `${format} slide ${i + 1} renders without warnings: ${JSON.stringify(warnings)}`);
+    const lp = [...c.getContext('2d').getImageData(540, 1345, 1, 1).data.slice(0, 3)];
+    assert.deepEqual(lp, [0xDC, 0xEF, 0x6F], `${format} slide ${i + 1}: bottom line in the line color`);
     const png = c.toBuffer('image/png');
     files.push({ name: slideFilename(deck, i, new Date(2026, 9, 5)), data: new Uint8Array(png) });
     sx.drawImage(c, i * fmt.width / 2, 0, fmt.width / 2, fmt.height / 2);
@@ -100,9 +102,18 @@ for (const format of ['instagram', 'linkedin']) {
   assert.ok(long.warnings.some(w => w.code === 'overflow'));
   assert.ok(long.warnings.some(w => w.code === 'too-many-lines'));
 }
+// ── post colors ──
+{
+  const d = newDeck(brand, {});
+  assert.notEqual(d.lineColorId, d.bgColorId, 'line and background differ');
+  setPostColor(d, 'background', d.lineColorId);
+  assert.notEqual(d.lineColorId, d.bgColorId, 'picking the line color for background swaps them');
+  assert.deepEqual(nextPostColors(brand, 'orchid-pink'), { lineColorId: 'mint-teal', bgColorId: 'lime-light' });
+}
+
 // ── split cover ──
 {
-  const deck = newDeck(brand, { format: 'instagram', colorId: 'mint-teal' });
+  const deck = newDeck(brand, { format: 'instagram', lineColorId: 'lime-light', bgColorId: 'mint-teal' });
   setSlideType(brand, deck, 0, 'cover-split');
   assert.equal(deck.slides.length, 4, 'split cover inserts its second half');
   assert.deepEqual(deck.slides.slice(0, 2).map(s => s.part), [0, 1]);
@@ -125,6 +136,7 @@ for (const format of ['instagram', 'linkedin']) {
     if (i === 0) { assert.ok(near(px(c, 30, 600), teal), 'left margin'); assert.ok(!near(px(c, 90, 600), teal), 'photo starts at 60'); assert.ok(!near(px(c, 1075, 600), teal), 'photo runs to the right edge'); }
     else { assert.ok(near(px(c, 1050, 600), teal), 'right margin'); assert.ok(!near(px(c, 5, 600), teal), 'photo continues from the left edge'); }
     assert.ok(near(px(c, 540, 1160), teal), 'band under the photo');
+    assert.ok(near(px(c, 540, 1345), [0xDC, 0xEF, 0x6F]), 'lime bottom line on the cover');
     sx.drawImage(c, i * 540, 0, 540, 675);
   }
   writeFileSync(out('split_cover.png'), sheet.toBuffer('image/png'));

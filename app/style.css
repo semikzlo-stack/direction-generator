@@ -39,6 +39,8 @@ button:disabled { opacity: .35; cursor: default; }
 .seg-block { display: flex; flex-wrap: wrap; }
 .seg-block button { flex: 1 1 auto; }
 
+.color-group { display: inline-flex; align-items: center; gap: 8px; }
+.color-label { color: var(--muted); font-size: 12px; }
 .colors { display: inline-flex; gap: 6px; }
 .colors button { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; padding: 0; }
 .colors button.active { border-color: var(--text); box-shadow: 0 0 0 2px var(--chrome) inset; }

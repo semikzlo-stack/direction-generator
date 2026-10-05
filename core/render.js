@@ -69,14 +69,14 @@ export function renderSlide(ctx, brand, deck, index, opts = {}) {
   const fmt = brand.formats[deck.format];
   const slide = deck.slides[index];
   const card = brand.cards[slide.type];
-  const color = colorValue(brand, deck.colorId);
+  const bg = colorValue(brand, deck.bgColorId);
+  const line = colorValue(brand, deck.lineColorId);
   const style = textStyle(brand, deck.format);
   const warnings = [];
 
-  // Body: the post color fills the whole card. Photo cards cover the top
-  // `photoArea`, leaving the bottom line visible; paragraph cards stay colored.
+  // Body: the background color fills the card; photos cover their area on top.
   ctx.clearRect(0, 0, fmt.width, fmt.height);
-  ctx.fillStyle = color;
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, fmt.width, fmt.height);
 
   if (card.photo) {
@@ -108,6 +108,10 @@ export function renderSlide(ctx, brand, deck, index, opts = {}) {
       warnings.push(...layout.warnings);
     }
   }
+
+  // Bottom line: the post's line color, on every slide, above everything else.
+  ctx.fillStyle = line;
+  ctx.fillRect(0, fmt.height - fmt.bottomLine, fmt.width, fmt.bottomLine);
 
   return { warnings };
 }

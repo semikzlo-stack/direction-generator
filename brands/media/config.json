@@ -17,8 +17,10 @@
   "postColor": {
     "scope": "post",
     "order": ["orchid-pink", "mint-teal", "lime-light"],
-    "rule": "differs-from-previous-post",
-    "_note": "One brand color per carousel: bottom line on every slide + paragraph backgrounds. White is not a brand color and is never used for lines or backgrounds."
+    "roles": ["line", "background"],
+    "distinct": true,
+    "rule": "line color differs from the previous post",
+    "_note": "Each carousel uses two different palette colors: one for the bottom line (on every slide, always visible) and one for color backgrounds (paragraph, split cover). White is not a brand color."
   },
 
   "text": {
@@ -58,10 +60,9 @@
       "firstOnly": true,
       "addable": false,
       "photo": "split",
-      "background": "postColor",
+      "background": "bg",
       "text": { "role": "header", "color": "onColor", "anchor": "bottom", "maxLines": 1, "overflow": "warn", "onPart": 0 },
-      "_source": "Figma node 132:106 (slides 1–2). Photo box 1020×1077 with 60px outer margins, runs across both slides; one header line under it on slide 1.",
-      "_open": "Mockup shows a teal background with a lime bottom line; built with the post color for both, per 'one color per post'."
+      "_source": "Figma node 132:106 (slides 1–2). Photo box 1020×1077 with 60px outer margins, runs across both slides; one header line under it on slide 1."
     },
     "image": {
       "photo": "cover",
@@ -69,7 +70,7 @@
     },
     "paragraph": {
       "photo": null,
-      "background": "postColor",
+      "background": "bg",
       "text": { "role": "paragraph", "color": "onColor", "anchor": "bottom", "overflow": "warn" }
     }
   },

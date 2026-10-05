@@ -1,6 +1,6 @@
 import { loadBrand } from '../core/brand.js';
 import { renderSlide, textStyle, photoLayout } from '../core/render.js';
-import { newDeck, nextColor, syncSpans, photoSlices, deckWarnings, uid,
+import { newDeck, nextPostColors, setPostColor, migrateDeck, syncSpans, photoSlices, deckWarnings, uid,
   typesFor, addableTypes, setSlideType, insertPreset, canMove, coverRange } from '../core/deck.js';
 import { clampPhoto, ZOOM_MAX } from '../core/photo.js';
 import { typo, layoutBlock } from '../core/text.js';
@@ -42,10 +42,8 @@ async function boot() {
 }
 
 function startNewDeck() {
-  const last = lsGet(LS.lastColor);
-  const colorId = last ? nextColor(state.brand, last) : undefined;
   const format = state.deck ? state.deck.format : 'instagram';
-  state.deck = newDeck(state.brand, { format, colorId });
+  state.deck = newDeck(state.brand, { format, ...nextPostColors(state.brand, lsGet(LS.lastColor)) });
   state.sel = 0;
   state.draftId = null;
   state.dirty = false;
@@ -232,7 +230,8 @@ function renderPanelStatus() {
 function refreshAll() {
   syncSpans(state.deck);
   document.querySelectorAll('#formatSeg button').forEach(b => b.classList.toggle('active', b.dataset.format === state.deck.format));
-  document.querySelectorAll('#colors button').forEach(b => b.classList.toggle('active', b.dataset.color === state.deck.colorId));
+  document.querySelectorAll('#lineColors button').forEach(b => b.classList.toggle('active', b.dataset.color === state.deck.lineColorId));
+  document.querySelectorAll('#bgColors button').forEach(b => b.classList.toggle('active', b.dataset.color === state.deck.bgColorId));
   sizeCanvas();
   renderStrip();
   refreshPanel();
@@ -248,13 +247,16 @@ function changed() { state.dirty = true; refreshAll(); }
 
 // ───────────────────────── builders ─────────────────────────
 function buildColors() {
-  const wrap = $('colors');
-  for (const c of state.brand.postColor.order) {
-    const p = state.brand.palette.find(x => x.id === c);
-    const b = document.createElement('button');
-    b.dataset.color = c; b.title = p.name; b.style.background = p.value;
-    b.onclick = () => { state.deck.colorId = c; changed(); };
-    wrap.append(b);
+  for (const [role, wrapId] of [['line', 'lineColors'], ['background', 'bgColors']]) {
+    const wrap = $(wrapId);
+    for (const c of state.brand.postColor.order) {
+      const p = state.brand.palette.find(x => x.id === c);
+      const b = document.createElement('button');
+      b.dataset.color = c; b.title = p.name; b.style.background = p.value;
+      // Picking the other role's color swaps them, so line and background never match.
+      b.onclick = () => { setPostColor(state.deck, role, c); changed(); };
+      wrap.append(b);
+    }
   }
 }
 
@@ -425,7 +427,7 @@ function renderFull(i) {
 async function downloadSlide() {
   const bytes = await canvasToBytes(renderFull(state.sel));
   downloadBytes(bytes, slideFilename(state.deck, state.sel), 'image/png');
-  lsSet(LS.lastColor, state.deck.colorId);
+  lsSet(LS.lastColor, state.deck.lineColorId);
 }
 
 async function downloadAll() {
@@ -438,7 +440,7 @@ async function downloadAll() {
   }
   const zipName = slideFilename(state.deck, 0).replace(/_\d+\.png$/, '.zip');
   downloadBytes(makeZip(files), zipName, 'application/zip');
-  lsSet(LS.lastColor, state.deck.colorId);
+  lsSet(LS.lastColor, state.deck.lineColorId);
 }
 
 // ───────────────────────── drafts ─────────────────────────
@@ -496,7 +498,7 @@ async function openDrafts() {
 async function loadDraft(id) {
   const d = await getDraft(id);
   if (!d) return;
-  const deck = d.deck;
+  const deck = migrateDeck(state.brand, d.deck);
   for (const [pid, p] of Object.entries(deck.photos)) {
     const blob = d.photoBlobs[pid];
     if (blob) { p.blob = blob; p.image = await blobToImage(blob); }

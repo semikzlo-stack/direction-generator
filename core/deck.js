@@ -3,7 +3,7 @@
 //
 // {
 //   format: 'instagram' | 'linkedin',
-//   colorId: 'orchid-pink',
+//   lineColorId: 'orchid-pink', bgColorId: 'mint-teal',
 //   slides: [{ id, type, text?, photoId? }],
 //   photos: { [photoId]: { id, image, span, zoom, offX, offY } }
 // }
@@ -14,10 +14,40 @@
 let seq = 0;
 export const uid = (p = 'id') => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
-export function newDeck(brand, { format = 'instagram', colorId } = {}) {
+export function newDeck(brand, { format = 'instagram', lineColorId, bgColorId } = {}) {
   const order = brand.postColor.order;
+  const line = lineColorId || order[0];
+  const bg = bgColorId && bgColorId !== line ? bgColorId : nextColor(brand, line);
   const slides = brand.storyOrder.default.map(type => ({ id: uid('s'), type, text: '' }));
-  return { format, colorId: colorId || order[0], slides, photos: {} };
+  return { format, lineColorId: line, bgColorId: bg, slides, photos: {} };
+}
+
+/** Colors for the next post: line moves on from the previous post's line. */
+export function nextPostColors(brand, prevLineId) {
+  const line = prevLineId ? nextColor(brand, prevLineId) : brand.postColor.order[0];
+  return { lineColorId: line, bgColorId: nextColor(brand, line) };
+}
+
+/**
+ * Set one color role, keeping line and background different: picking the
+ * other role's color swaps the two.
+ */
+export function setPostColor(deck, role, colorId) {
+  const key = role === 'line' ? 'lineColorId' : 'bgColorId';
+  const other = role === 'line' ? 'bgColorId' : 'lineColorId';
+  if (deck[other] === colorId) deck[other] = deck[key];
+  deck[key] = colorId;
+  return deck;
+}
+
+/** Older drafts stored a single colorId. */
+export function migrateDeck(brand, deck) {
+  if (deck.colorId && !deck.lineColorId) {
+    deck.lineColorId = deck.colorId;
+    deck.bgColorId = nextColor(brand, deck.colorId);
+    delete deck.colorId;
+  }
+  return deck;
 }
 
 /**
