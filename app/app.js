@@ -1,5 +1,5 @@
 import { loadBrand } from '../core/brand.js';
-import { renderSlide, textStyle, photoLayout } from '../core/render.js';
+import { renderSlide, textStyle, photoLayout, maxLinesFor } from '../core/render.js';
 import { newDeck, nextPostColors, setPostColor, migrateDeck, syncSpans, photoSlices, deckWarnings, uid,
   typesFor, addableTypes, setSlideType, insertPreset, canMove, moveGroup, moveGroupTo, isCover, coverRange, groupRange, deleteGroup, isEmptySlide, withoutEmptySlides } from '../core/deck.js';
 import { clampPhoto, ZOOM_MAX } from '../core/photo.js';
@@ -254,8 +254,9 @@ function renderPanelStatus() {
   if (!$('textField').hidden && slide.text && slide.text.trim()) {
     const ctx = preview.getContext('2d');
     const style = textStyle(state.brand, state.deck.format);
-    const lay = layoutBlock(ctx, typo(slide.text, state.brand.typography), style, fmt().safeZone, { maxLines: card.text.maxLines });
-    lc.textContent = t().lines(lay.lines.length, card.text.maxLines);
+    const max = maxLinesFor(ctx, state.brand, state.deck.format, card);
+    const lay = layoutBlock(ctx, typo(slide.text, state.brand.typography), style, fmt().safeZone, { maxLines: max });
+    lc.textContent = t().lines(lay.lines.length, max);
     lc.classList.toggle('bad', lay.warnings.length > 0);
   } else { lc.textContent = ''; lc.classList.remove('bad'); }
 
@@ -594,8 +595,28 @@ function applyLang(lang) {
   if (state.deck) { refreshPanel(); renderPanelStatus(); renderDrafts(); }
 }
 
+const plainLen = m => m.replace(/\*/g, '').length;
+
+/** Lines the text would take on the current slide. */
+function lineCount(markup) {
+  const card = state.brand.cards[current().type];
+  const ctx = preview.getContext('2d');
+  const lay = layoutBlock(ctx, typo(markup, state.brand.typography), textStyle(state.brand, state.deck.format), fmt().safeZone);
+  return { lines: lay.lines.length, max: maxLinesFor(ctx, state.brand, state.deck.format, card) };
+}
+
 let textRaf = false;
-function onTextInput(value) {
+function onTextInput(value, prev) {
+  // Hard limit: an edit that adds a line beyond the limit is undone.
+  const { lines, max } = lineCount(value);
+  if (lines > max && lines > lineCount(prev || '').lines) {
+    const caret = state.editor.getCaret();
+    state.editor.setValue(prev || '');
+    if (caret != null) state.editor.setCaret(caret - (plainLen(value) - plainLen(prev || '')));
+    const lc = $('lineCounter');
+    lc.classList.remove('flash'); void lc.offsetWidth; lc.classList.add('flash');
+    return;
+  }
   current().text = value;
   state.dirty = true;
   if (textRaf) return;

@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
 
 import { renderSlide } from '../core/render.js';
-import { typo, parseRuns, layoutBlock } from '../core/text.js';
+import { typo, parseRuns, layoutBlock, linesThatFit } from '../core/text.js';
 import { newDeck, setPostColor, nextPostColors, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes, deleteGroup, groupRange, moveGroup, isEmptySlide, withoutEmptySlides } from '../core/deck.js';
 import { makeZip, slideFilename, zipEntryName, slugify } from '../core/export.js';
 
@@ -96,6 +96,10 @@ for (const format of ['instagram', 'linkedin']) {
   console.log('paragraph breaks:', p.lines.map(l => l.runs.map(r => r.text).join('')).map(s => s.replace(/ /g, '·')));
   assert.equal(p.lines.length, 5); assert.ok(Math.abs(p.top - 867.5) < 3, 'paragraph top ≈ Figma 865');
   assert.equal(h.lines.length, 2); assert.ok(Math.abs(h.top - 1115) < 2, 'header top ≈ Figma 1114');
+
+  // lines that fit inside the green safe zone
+  assert.equal(linesThatFit(ctx, style, box), 14, 'Instagram paragraph: 14 lines');
+  assert.equal(linesThatFit(ctx, { ...style, size: 65 }, brand.formats.linkedin.safeZone), 15, 'LinkedIn paragraph: 15 lines');
 
   // overflow + max lines warnings
   const long = layoutBlock(ctx, 'słowo '.repeat(200), style, box, { maxLines: 4 });

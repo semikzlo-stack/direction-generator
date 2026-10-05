@@ -161,6 +161,21 @@ export function layoutBlock(ctx, text, style, box, opts = {}) {
   return { lines, baselines, top, lineHeight: L, warnings };
 }
 
+/**
+ * How many lines fit in `box` when the block is bottom-anchored: the first
+ * line's capitals must not rise above the box top (the green safe-zone line).
+ */
+export function linesThatFit(ctx, style, box) {
+  const L = style.size * style.lineHeight;
+  const { asc, desc } = fontMetrics(ctx, style);
+  ctx.font = fontString(style, false);
+  const cap = ctx.measureText('H').actualBoundingBoxAscent;
+  const inset = (L - (asc + desc)) / 2;
+  const bottom = box.y + box.h;
+  // capTop(n) = bottom - n·L + inset + asc - cap  ≥  box.y
+  return Math.max(1, Math.floor((bottom - box.y + inset + asc - cap) / L + 1e-6));
+}
+
 export function drawBlock(ctx, layout, style, x, color) {
   ctx.save();
   ctx.fillStyle = color;

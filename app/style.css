@@ -75,6 +75,8 @@ button:focus-visible, input:focus-visible, .text-input:focus-visible { outline: 
 .icon.italic.active { background: var(--text); color: #111; border-color: var(--text); }
 .counter { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .counter.bad { color: var(--warn); }
+.counter.flash { animation: flash .6s; }
+@keyframes flash { 0%, 60% { color: var(--danger); transform: scale(1.15); } 100% { color: inherit; transform: none; } }
 .text-input {
   min-height: 140px; max-height: 320px; overflow-y: auto;
   background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: var(--r);

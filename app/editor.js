@@ -59,16 +59,55 @@ export function createTextEditor(el, { onInput, onSelection }) {
     document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
   });
   el.addEventListener('input', () => {
+    const prev = value;
     value = htmlToMarkup(el);
     el.classList.toggle('empty', !value);
-    onInput(value);
+    onInput(value, prev);
   });
   document.addEventListener('selectionchange', () => {
     if (document.activeElement === el && onSelection) onSelection(document.queryCommandState('italic'));
   });
 
+  /** Caret position counted in plain-text characters (a line break counts as one). */
+  function getCaret() {
+    const sel = getSelection();
+    if (!sel.rangeCount || !el.contains(sel.anchorNode)) return null;
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    r.setEnd(sel.anchorNode, sel.anchorOffset);
+    const frag = r.cloneContents();
+    let n = 0;
+    const walk = node => node.childNodes.forEach(c => {
+      if (c.nodeType === 3) n += c.nodeValue.length;
+      else if (c.tagName === 'BR') n += 1;
+      else walk(c);
+    });
+    walk(frag);
+    return n;
+  }
+  function setCaret(pos) {
+    let left = Math.max(0, pos);
+    const range = document.createRange();
+    const find = node => {
+      for (const c of node.childNodes) {
+        if (c.nodeType === 3) {
+          if (left <= c.nodeValue.length) { range.setStart(c, left); return true; }
+          left -= c.nodeValue.length;
+        } else if (c.tagName === 'BR') {
+          if (left === 0) { range.setStartBefore(c); return true; }
+          left -= 1;
+        } else if (find(c)) return true;
+      }
+      return false;
+    };
+    if (!find(el)) { range.selectNodeContents(el); range.collapse(false); }
+    range.collapse(true);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  }
+
   return {
     get value() { return value; },
+    getCaret, setCaret,
     setValue(markup) {
       if (markup === value) return;
       value = markup || '';

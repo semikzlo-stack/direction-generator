@@ -2,7 +2,7 @@
 // Draws one slide of a deck into a 2D context sized to the format (1 unit = 1 px
 // of the exported image; the caller handles devicePixelRatio).
 
-import { typo, layoutBlock, drawBlock } from './text.js';
+import { typo, layoutBlock, drawBlock, linesThatFit } from './text.js';
 import { drawPhotoSlice, clampPhoto } from './photo.js';
 import { photoSlices } from './deck.js';
 
@@ -31,6 +31,12 @@ function drawPlaceholder(ctx, area) {
   ctx.fillStyle = '#5a5a5a';
   ctx.fillRect(area.x, area.y, area.w, area.h);
   ctx.restore();
+}
+
+/** Line limit for a card's text: the card's own maximum, capped by the safe zone. */
+export function maxLinesFor(ctx, brand, format, card) {
+  const fit = linesThatFit(ctx, textStyle(brand, format), brand.formats[format].safeZone);
+  return Math.min(card.text.maxLines || Infinity, fit);
 }
 
 /**
@@ -102,7 +108,9 @@ export function renderSlide(ctx, brand, deck, index, opts = {}) {
     } else {
       const text = typo(raw, brand.typography);
       const box = fmt.safeZone;
-      const layout = layoutBlock(ctx, text, style, box, { maxLines: card.text.maxLines });
+      const layout = layoutBlock(ctx, text, style, box, { maxLines: maxLinesFor(ctx, brand, deck.format, card) });
+      // One message is enough: too many lines already means it doesn't fit.
+      if (layout.warnings.some(w => w.code === 'too-many-lines')) layout.warnings = layout.warnings.filter(w => w.code !== 'overflow');
       const fill = card.text.color === 'onImage' ? brand.text.onImage : brand.text.onColor;
       drawBlock(ctx, layout, style, box.x, fill);
       warnings.push(...layout.warnings);

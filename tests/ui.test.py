@@ -86,13 +86,30 @@ with sync_playwright() as p:
 
     # Too-long header → warning
     page.click('.thumb >> nth=0')
+    before = st('s.deck.slides[0].text')
     page.fill('#textInput', 'Bardzo długi nagłówek, który na pewno nie zmieści się w czterech liniach tekstu na zdjęciu, bo jest za długi i ciągnie się dalej')
-    page.wait_for_timeout(150); print('   warnings:', repr(page.inner_text('#warnings')))
-    check('Shorten' in page.inner_text('#warnings'), 'too-long header shows a warning')
+    page.wait_for_timeout(150)
+    check(st('s.deck.slides[0].text') == before, 'header longer than 4 lines is rejected')
     check(page.locator('.badge').count() == 0, 'no warning badges on thumbnails')
     page.fill('#textInput', '"Ostatni zamek" w księgarni Bęc Zmiany')
-    page.wait_for_timeout(150); print('   warnings after:', repr(page.inner_text('#warnings')))
-    check(page.inner_text('#warnings').strip() == '', 'warning clears after shortening')
+    # Paragraph: typing stops at the safe-zone line (14 lines on Instagram)
+    page.click('.thumb >> nth=1')
+    words = 'słowo ' * 200
+    page.fill('#textInput', '')
+    page.click('#textInput')
+    page.keyboard.insert_text(' '.join(['tekst akapitu'] * 40))
+    page.wait_for_timeout(100)
+    check(page.inner_text('#lineCounter') == '', 'oversized paste is rejected whole')
+    for chunk in ['To jest akapit, który rośnie. '] * 40:
+        page.keyboard.insert_text(chunk)
+    page.wait_for_timeout(100)
+    check(page.inner_text('#lineCounter') == '14/14', f'paragraph stops at 14/14 lines: {page.inner_text("#lineCounter")}')
+    page.keyboard.type('xyz')
+    page.wait_for_timeout(100)
+    check(page.inner_text('#lineCounter') == '14/14', 'extra typing does not add a line')
+    page.screenshot(path=str(OUT / 'ui_paragraph_limit.png'))
+    page.fill('#textInput', '„Ostatni zamek” pojawił się na witrynie sklepu Fundacji Bęc Zmiana. A wokół moc niezwykle pięknie zaprojektowanych książek.')
+    page.click('.thumb >> nth=0')
 
     # LinkedIn
     page.click('#formatSeg button[data-format=linkedin]')
@@ -181,7 +198,7 @@ with sync_playwright() as p:
     page.click('.thumb >> nth=0')
     page.fill('#textInput', 'Zamczystość w „Vogue” i jeszcze jedna długa linia')
     page.wait_for_timeout(150)
-    check('maximum 1' in page.inner_text('#warnings'), 'two-line cover header warns (max 1)')
+    check(st('s.deck.slides[0].text') == 'Zamczystość w „Vogue”', 'second line on the split cover is rejected')
     page.fill('#textInput', 'Zamczystość')
 
     n1 = st('s.deck.slides.length')
