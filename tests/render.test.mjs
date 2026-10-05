@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { renderSlide } from '../core/render.js';
 import { typo, parseRuns, layoutBlock } from '../core/text.js';
-import { newDeck, setPostColor, nextPostColors, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes, deleteGroup, groupRange, moveGroup } from '../core/deck.js';
+import { newDeck, setPostColor, nextPostColors, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes, deleteGroup, groupRange, moveGroup, isEmptySlide, withoutEmptySlides } from '../core/deck.js';
 import { makeZip, slideFilename, zipEntryName, slugify } from '../core/export.js';
 
 const brand = JSON.parse(readFileSync(new URL('../brands/media/config.json', import.meta.url)));
@@ -163,6 +163,19 @@ for (const format of ['instagram', 'linkedin']) {
   assert.equal(deck.slides.length, 2, 'deleting a cover half removes both halves');
   assert.ok(!deleteGroup(deck, 0) || deck.slides.length >= 1);
 }
+// ── empty slides ──
+{
+  const d = newDeck(brand, {});                 // header, paragraph, image — all empty
+  assert.ok([0, 1, 2].every(i => isEmptySlide(brand, d, i)));
+  assert.equal(withoutEmptySlides(brand, d).slides.length, 0);
+  d.slides[1].text = 'Tekst';
+  insertPreset(brand, d, 'panorama', 2);         // empty pair
+  d.photos[d.slides[3].photoId].image = { width: 10, height: 10 };
+  const c = withoutEmptySlides(brand, d);
+  assert.deepEqual(c.slides.map(s => s.type), ['paragraph', 'image', 'image'], 'keeps text and the filled panorama pair');
+  assert.equal(d.slides.length, 5, 'original deck untouched');
+}
+
 // ── zip names ──
 {
   const d = newDeck(brand, {}); d.slides[0].text = 'Zamek';

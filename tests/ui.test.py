@@ -99,7 +99,11 @@ with sync_playwright() as p:
     check(st('s.deck.format') == 'linkedin', 'switched to LinkedIn')
     page.screenshot(path=str(OUT / 'ui_linkedin.png'))
 
-    # Export ZIP
+    # Export: an empty slide at the end is skipped
+    page.click('.thumb >> nth=3')
+    page.click('#addBtn'); page.click('#addMenu button[data-type=paragraph]')
+    check(st('s.deck.slides.length') == 5, 'empty paragraph slide added')
+    check(page.inner_text('#downloadAllBtn') == 'Download all slides', 'button reads "Download all slides"')
     with page.expect_download() as dl:
         page.click('#downloadAllBtn')
     d = dl.value
@@ -116,6 +120,7 @@ with sync_playwright() as p:
     # Draft round trip
     page.click('#saveDraftBtn')
     page.wait_for_selector('#toast:not([hidden])')
+    check(page.evaluate("(async () => { const db = await new Promise(r => { const q = indexedDB.open('direction-generator', 1); q.onsuccess = () => r(q.result); }); return await new Promise(r => { const g = db.transaction('drafts').objectStore('drafts').getAll(); g.onsuccess = () => r(g.result[0].deck.slides.length); }); })()") == 4, 'draft saved without the empty slide')
     page.evaluate('window.__dg.state.dirty = false')
     page.click('#newBtn')
     check(st('Object.keys(s.deck.photos).length') == 0, 'new post is empty')
@@ -126,7 +131,7 @@ with sync_playwright() as p:
     check(page.locator('#draftsList .draft').count() == 1, 'saved draft appears in the drafts column')
     page.click('#draftsList .draft >> nth=0')
     page.wait_for_function('Object.keys(window.__dg.state.deck.photos).length === 2')
-    check(st('s.deck.slides.length') == 4 and st('s.deck.format') == 'linkedin', 'draft restores slides and format')
+    check(st('s.deck.slides.length') == 4 and st('s.deck.format') == 'linkedin', 'draft restores non-empty slides and format')
     check(st('Object.values(s.deck.photos).every(p => p.image && p.image.width > 0)'), 'draft restores photos')
 
     # Split cover and panorama preset

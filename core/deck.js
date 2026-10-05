@@ -250,3 +250,27 @@ export function moveGroupTo(deck, from, target, side, brand) {
   s.splice(at, 0, ...block);
   return at;
 }
+
+/**
+ * A slide is empty when the user has put nothing on it: no chosen photo and
+ * no text. Halves of a double slide share their emptiness.
+ */
+export function isEmptySlide(brand, deck, index) {
+  const [from, to] = groupRange(deck, index);
+  for (let i = from; i <= to; i++) {
+    const s = deck.slides[i];
+    const card = brand.cards[s.type];
+    const photo = s.photoId && deck.photos[s.photoId];
+    if (card && card.photo && photo && photo.image) return false;
+    if (card && card.text && s.text && s.text.trim()) return false;
+  }
+  return true;
+}
+
+/** Copy of the deck without empty slides (for export and drafts). */
+export function withoutEmptySlides(brand, deck) {
+  const slides = deck.slides.filter((_, i) => !isEmptySlide(brand, deck, i));
+  const used = new Set(slides.map(s => s.photoId).filter(Boolean));
+  const photos = Object.fromEntries(Object.entries(deck.photos).filter(([id]) => used.has(id)));
+  return syncSpans({ ...deck, slides, photos });
+}

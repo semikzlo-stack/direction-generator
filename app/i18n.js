@@ -1,6 +1,6 @@
 export const I18N = {
   pl: {
-    newPost: 'Nowy post', downloadSlide: 'Pobierz slajd', downloadAll: 'Pobierz ZIP',
+    newPost: 'Nowy post', downloadSlide: 'Pobierz slajd', downloadAll: 'Pobierz wszystkie slajdy',
     saveDraft: 'Zapisz wersję', guides: 'Strefa bezpieczna',
     lineColor: 'Linia', bgColor: 'Tło',
     types: { 'image-header': 'Zdjęcie + nagłówek', 'cover-split': 'Okładka na 2 slajdy', 'image': 'Zdjęcie', 'paragraph': 'Akapit' },
@@ -22,11 +22,12 @@ export const I18N = {
     exportWithIssues: n => `Problemy na ${n} slajdach. Pobrać mimo to?`,
     deleteLast: 'Post musi mieć co najmniej jeden slajd.',
     deleteSlide: 'Usuń slajd', deleteBoth: 'Usuń oba slajdy',
+    emptySlide: 'Ten slajd jest pusty.', nothingToSave: 'Wszystkie slajdy są puste.',
     saved: 'Zapisano', remove: 'Usuń', untitled: 'Bez tytułu',
     confirmNew: 'Zacząć nowy post? Niezapisane zmiany przepadną.',
   },
   en: {
-    newPost: 'New post', downloadSlide: 'Download slide', downloadAll: 'Download ZIP',
+    newPost: 'New post', downloadSlide: 'Download slide', downloadAll: 'Download all slides',
     saveDraft: 'Save draft', guides: 'Safe zone',
     lineColor: 'Line', bgColor: 'Background',
     types: { 'image-header': 'Photo + header', 'cover-split': 'Cover on 2 slides', 'image': 'Photo', 'paragraph': 'Paragraph' },
@@ -48,6 +49,7 @@ export const I18N = {
     exportWithIssues: n => `${n} slide(s) have issues. Download anyway?`,
     deleteLast: 'A post needs at least one slide.',
     deleteSlide: 'Delete slide', deleteBoth: 'Delete both slides',
+    emptySlide: 'This slide is empty.', nothingToSave: 'All slides are empty.',
     saved: 'Saved', remove: 'Delete', untitled: 'Untitled',
     confirmNew: 'Start a new post? Unsaved changes will be lost.',
   },

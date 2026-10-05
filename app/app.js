@@ -1,7 +1,7 @@
 import { loadBrand } from '../core/brand.js';
 import { renderSlide, textStyle, photoLayout } from '../core/render.js';
 import { newDeck, nextPostColors, setPostColor, migrateDeck, syncSpans, photoSlices, deckWarnings, uid,
-  typesFor, addableTypes, setSlideType, insertPreset, canMove, moveGroup, moveGroupTo, isCover, coverRange, groupRange, deleteGroup } from '../core/deck.js';
+  typesFor, addableTypes, setSlideType, insertPreset, canMove, moveGroup, moveGroupTo, isCover, coverRange, groupRange, deleteGroup, isEmptySlide, withoutEmptySlides } from '../core/deck.js';
 import { clampPhoto, ZOOM_MAX } from '../core/photo.js';
 import { typo, layoutBlock } from '../core/text.js';
 import { slideFilename, zipEntryName, postBaseName, makeZip, canvasToBytes, downloadBytes } from '../core/export.js';
@@ -459,53 +459,59 @@ function onPointerUp() {
 }
 
 // ───────────────────────── export ─────────────────────────
-function renderFull(i) {
-  const f = fmt();
+function renderFull(deck, i) {
+  const f = state.brand.formats[deck.format];
   const c = document.createElement('canvas');
   c.width = f.width; c.height = f.height;
-  renderSlide(c.getContext('2d'), state.brand, state.deck, i);
+  renderSlide(c.getContext('2d'), state.brand, deck, i);
   return c;
 }
 
 async function downloadSlide() {
-  const bytes = await canvasToBytes(renderFull(state.sel));
+  if (isEmptySlide(state.brand, state.deck, state.sel)) return toast(t().emptySlide);
+  const bytes = await canvasToBytes(renderFull(state.deck, state.sel));
   downloadBytes(bytes, slideFilename(state.deck, state.sel), 'image/png');
   lsSet(LS.lastColor, state.deck.lineColorId);
 }
 
+/** All slides with content, in carousel order; empty slides are skipped. */
 async function downloadAll() {
   renderStrip();
-  const bad = slideWarnings.filter(w => w && w.some(isRealWarning)).length;
+  const deck = withoutEmptySlides(state.brand, state.deck);
+  if (!deck.slides.length) return toast(t().nothingToSave);
+  const kept = state.deck.slides.map((s, i) => deck.slides.includes(s) ? i : -1).filter(i => i >= 0);
+  const bad = kept.filter(i => (slideWarnings[i] || []).some(isRealWarning)).length;
   if (bad && !confirm(t().exportWithIssues(bad))) return;
   const files = [];
-  for (let i = 0; i < state.deck.slides.length; i++) {
-    files.push({ name: zipEntryName(state.deck, i), data: await canvasToBytes(renderFull(i)) });
+  for (let i = 0; i < deck.slides.length; i++) {
+    files.push({ name: zipEntryName(deck, i), data: await canvasToBytes(renderFull(deck, i)) });
   }
-  const zipName = `${postBaseName(state.deck)}.zip`;
-  downloadBytes(makeZip(files), zipName, 'application/zip');
+  downloadBytes(makeZip(files), `${postBaseName(deck)}.zip`, 'application/zip');
   lsSet(LS.lastColor, state.deck.lineColorId);
 }
 
 // ───────────────────────── drafts ─────────────────────────
 async function doSaveDraft() {
   pruneUnusedPhotos();
+  const deck = withoutEmptySlides(state.brand, state.deck);
+  if (!deck.slides.length) return toast(t().nothingToSave);
   const thumbCanvas = document.createElement('canvas');
   const f = fmt();
   thumbCanvas.width = 216; thumbCanvas.height = Math.round(216 * f.height / f.width);
   const ctx = thumbCanvas.getContext('2d');
   ctx.scale(216 / f.width, 216 / f.width);
-  renderSlide(ctx, state.brand, state.deck, 0);
+  renderSlide(ctx, state.brand, deck, 0);
   const thumb = await new Promise(r => thumbCanvas.toBlob(r, 'image/jpeg', 0.85));
 
   const photoBlobs = {};
-  for (const [id, p] of Object.entries(state.deck.photos)) if (p.blob) photoBlobs[id] = p.blob;
+  for (const [id, p] of Object.entries(deck.photos)) if (p.blob) photoBlobs[id] = p.blob;
 
   state.draftId = state.draftId || uid('d');
-  const first = state.deck.slides.find(s => s.text && s.text.trim());
+  const first = deck.slides.find(s => s.text && s.text.trim());
   await saveDraft({
     id: state.draftId, brandId: BRAND_ID,
     title: first ? first.text.replace(/\*/g, '').slice(0, 80) : '',
-    thumb, deck: serialiseDeck(state.deck), photoBlobs,
+    thumb, deck: serialiseDeck(deck), photoBlobs,
   });
   state.dirty = false;
   toast(t().saved);
