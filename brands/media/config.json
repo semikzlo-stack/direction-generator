@@ -1,0 +1,110 @@
+{
+  "id": "media",
+  "name": "Media",
+  "_source": "Figma LvPLuhQoVlLPfMzXTcnr1X, section 13:279 'Rules'; video 'How rules work' + ready posts; designer answers 2026-10-05",
+
+  "fonts": [
+    { "family": "Mabry Pro", "weight": 400, "style": "normal", "file": "fonts/MabryPro-Regular.woff2" },
+    { "family": "Mabry Pro", "weight": 400, "style": "italic", "file": "fonts/MabryPro-Italic.woff2" }
+  ],
+
+  "palette": [
+    { "id": "orchid-pink", "name": "orchid pink", "value": "#F586E5" },
+    { "id": "mint-teal",   "name": "mint teal",   "value": "#64C7B2" },
+    { "id": "lime-light",  "name": "lime light",  "value": "#DCEF6F" }
+  ],
+
+  "postColor": {
+    "scope": "post",
+    "order": ["orchid-pink", "mint-teal", "lime-light"],
+    "rule": "differs-from-previous-post",
+    "_note": "One brand color per carousel: bottom line on every slide + paragraph backgrounds. White is not a brand color and is never used for lines or backgrounds."
+  },
+
+  "text": {
+    "onImage": "#FFFFFF",
+    "onColor": "#19090D",
+    "_note": "Black exists only as text color (#19090D from Figma). White only as text on photos."
+  },
+
+  "type": {
+    "family": "Mabry Pro",
+    "weight": 400,
+    "lineHeight": 1.1,
+    "letterSpacing": 0,
+    "fixedSize": true,
+    "italic": { "allowedIn": ["header", "paragraph"], "markup": "*text*" }
+  },
+
+  "gradient": {
+    "appliesTo": ["image-header"],
+    "direction": "top-to-bottom",
+    "area": "photoArea",
+    "stops": [
+      { "at": 0.6696,  "color": "rgba(0,0,0,0)" },
+      { "at": 0.89245, "color": "rgba(0,0,0,0.48)" }
+    ],
+    "holdAfterLastStop": true
+  },
+
+  "cards": {
+    "image": {
+      "photo": "cover",
+      "text": null
+    },
+    "image-header": {
+      "photo": "cover",
+      "gradient": true,
+      "text": { "role": "header", "color": "onImage", "anchor": "bottom", "maxLines": 4, "overflow": "warn" }
+    },
+    "paragraph": {
+      "photo": null,
+      "background": "postColor",
+      "text": { "role": "paragraph", "color": "onColor", "anchor": "bottom", "overflow": "warn" }
+    }
+  },
+
+  "storyOrder": {
+    "default": ["image-header", "paragraph", "image"],
+    "_note": "image-header is the main card that opens the story. Default for a new carousel; slides can be reordered."
+  },
+
+  "carousel": {
+    "spanningImages": true,
+    "seamGuard": true,
+    "_note": "A photo may run across adjacent slides (official). Important content must stay away from the seam: the editor shows the seam and warns. Spanning applies to photo cards (image, image-header)."
+  },
+
+  "formats": {
+    "instagram": {
+      "width": 1080,
+      "height": 1350,
+      "bottomLine": 10,
+      "photoArea": { "x": 0,  "y": 0,  "w": 1080, "h": 1340 },
+      "safeZone":  { "x": 60, "y": 60, "w": 960,  "h": 1220 },
+      "fontSize": 75
+    },
+    "linkedin": {
+      "width": 1080,
+      "height": 1350,
+      "bottomLine": 10,
+      "photoArea": { "x": 0,   "y": 0,   "w": 1080, "h": 1340 },
+      "safeZone":  { "x": 120, "y": 120, "w": 840,  "h": 1110 },
+      "fontSize": 65,
+      "_note": "Same cards and rules as Instagram; only margins and font size differ."
+    }
+  },
+
+  "typography": {
+    "language": "pl",
+    "quotes": { "open": "„", "close": "”" },
+    "nbspAfter": ["i", "a", "o", "u", "w", "z", "do", "na", "po", "we", "ze", "od", "ku", "by", "że", "to"],
+    "_note": "Applied to post text."
+  },
+
+  "export": {
+    "format": "png",
+    "filename": "{yymmdd}_{slug}_{format}_{slide:02}.png",
+    "carouselZip": true
+  }
+}
