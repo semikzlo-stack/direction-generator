@@ -171,11 +171,54 @@ export function insertPreset(brand, deck, name, index) {
   return at;
 }
 
-/** Can slide `index` move by `dir`? Split-cover slides stay at the start. */
+/** Can slide `index` (with its group) move by `dir`? Split-cover slides stay at the start. */
 export function canMove(deck, index, dir) {
-  const to = index + dir;
-  if (to < 0 || to >= deck.slides.length) return false;
-  const cover = coverRange(deck);
-  if (cover && (index <= cover[1] || to <= cover[1])) return false;
+  const [a, b] = groupRange(deck, index);
+  const n = dir < 0 ? a - 1 : b + 1;
+  if (n < 0 || n >= deck.slides.length) return false;
+  if (deck.slides[index].part != null || deck.slides[n].part != null) return false;
+  return true;
+}
+
+/**
+ * Move slide `index` together with its group past the neighbouring group.
+ * Returns the new index of the slide.
+ */
+export function moveGroup(deck, index, dir) {
+  if (!canMove(deck, index, dir)) return index;
+  const [a, b] = groupRange(deck, index);
+  const [c, d] = groupRange(deck, dir < 0 ? a - 1 : b + 1);
+  const s = deck.slides;
+  const self = s.slice(a, b + 1);
+  if (dir < 0) {
+    s.splice(a, self.length);
+    s.splice(c, 0, ...self);
+    return index - (d - c + 1);
+  }
+  s.splice(a, self.length);
+  s.splice(a + (d - c + 1), 0, ...self);
+  return index + (d - c + 1);
+}
+
+/**
+ * Slides that belong together with slide `index`: both halves of the split
+ * cover, or every slide of a photo spread across slides. Returns [from, to].
+ */
+export function groupRange(deck, index) {
+  const slide = deck.slides[index];
+  if (slide.part != null) return [0, 1];
+  const s = photoSlices(deck)[index];
+  if (s && s.span > 1) return [index - s.index, index - s.index + s.span - 1];
+  return [index, index];
+}
+
+/** Delete slide `index` together with its group. Returns false if nothing would be left. */
+export function deleteGroup(deck, index) {
+  const [from, to] = groupRange(deck, index);
+  if (to - from + 1 >= deck.slides.length) return false;
+  deck.slides.splice(from, to - from + 1);
+  const used = new Set(deck.slides.map(s => s.photoId).filter(Boolean));
+  for (const id of Object.keys(deck.photos)) if (!used.has(id)) delete deck.photos[id];
+  syncSpans(deck);
   return true;
 }

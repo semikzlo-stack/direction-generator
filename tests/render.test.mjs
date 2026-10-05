@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { renderSlide } from '../core/render.js';
 import { typo, parseRuns, layoutBlock } from '../core/text.js';
-import { newDeck, setPostColor, nextPostColors, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes } from '../core/deck.js';
+import { newDeck, setPostColor, nextPostColors, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes, deleteGroup, groupRange, moveGroup } from '../core/deck.js';
 import { makeZip, slideFilename, slugify } from '../core/export.js';
 
 const brand = JSON.parse(readFileSync(new URL('../brands/media/config.json', import.meta.url)));
@@ -152,5 +152,25 @@ for (const format of ['instagram', 'linkedin']) {
   assert.equal(at, 1);
   assert.equal(deck.slides[1].photoId, deck.slides[2].photoId);
   assert.equal(photoSlices(deck)[2].span, 2, 'panorama preset spans two slides');
+  assert.deepEqual(groupRange(deck, 2), [1, 2]);
+  assert.ok(deleteGroup(deck, 2));
+  assert.equal(deck.slides.length, 3, 'deleting part of a panorama removes both slides');
+  setSlideType(brand, deck, 0, 'cover-split');
+  assert.ok(deleteGroup(deck, 1));
+  assert.equal(deck.slides.length, 2, 'deleting a cover half removes both halves');
+  assert.ok(!deleteGroup(deck, 0) || deck.slides.length >= 1);
+}
+// ── moving groups ──
+{
+  const d = newDeck(brand, {});           // header, paragraph, image
+  insertPreset(brand, d, 'panorama', 2);  // header, paragraph, image, P, P
+  const pid = d.slides[3].photoId;
+  let i = moveGroup(d, 3, -1);            // panorama jumps over the single image
+  assert.equal(i, 2);
+  assert.deepEqual(d.slides.map(s => s.photoId === pid), [false, false, true, true, false]);
+  i = moveGroup(d, 1, 1);                 // paragraph jumps over the whole panorama
+  assert.equal(i, 3);
+  assert.deepEqual(d.slides.map(s => s.type), ['image-header', 'image', 'image', 'paragraph', 'image']);
+  assert.equal(photoSlices(d)[1].span, 2, 'panorama stays intact');
 }
 console.log('all checks passed');

@@ -124,6 +124,9 @@ button:focus-visible, input:focus-visible, .text-input:focus-visible { outline: 
 .thumb canvas { display: block; border-radius: 2px; }
 .thumb .num { position: absolute; left: 4px; top: 4px; line-height: 1; font-size: 11px; background: rgba(0,0,0,.55); padding: 2px 5px; border-radius: 3px; }
 .thumb .badge { position: absolute; right: 4px; top: 4px; line-height: 16px; width: 16px; height: 16px; font-size: 11px; background: var(--warn); color: #111; border-radius: 50%; }
+.thumb-del { position: absolute; right: 4px; bottom: 4px; width: 20px; height: 20px; line-height: 20px; text-align: center; font-size: 10px; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; opacity: 0; cursor: pointer; }
+.thumb:hover .thumb-del, .thumb.selected .thumb-del { opacity: 1; }
+.thumb-del:hover { background: var(--danger); color: #111; }
 .thumb.span-right { margin-right: -6px; }
 .thumb.span-right::after, .thumb.span-left::before { content: ""; position: absolute; top: 18%; bottom: 18%; width: 3px; background: var(--warn); border-radius: 2px; }
 .thumb.span-right::after { right: -2px; }

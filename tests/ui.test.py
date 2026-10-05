@@ -161,8 +161,18 @@ with sync_playwright() as p:
     page.fill('#textInput', 'Zamczystość w „Vogue” i jeszcze jedna długa linia')
     page.wait_for_timeout(150)
     check('maximum 1' in page.inner_text('#warnings'), 'two-line cover header warns (max 1)')
+    n0 = st('s.deck.slides.length')
     page.click('.thumb >> nth=1'); page.click('#deleteBtn')
-    check(st('s.deck.slides[0].type') == 'image-header' and st('s.deck.slides.length') == 6, 'deleting cover half reverts to a regular cover')
+    check(st('s.deck.slides.length') == n0 - 2 and st('s.deck.slides[0].part') is None, 'deleting a cover half deletes both halves')
+    # Panorama is now slides 2–3 (after the default header slide): delete via the thumbnail button
+    pano = st('s.deck.slides.findIndex((x, i, a) => a[i+1] && x.photoId && x.photoId === a[i+1].photoId)')
+    n1 = st('s.deck.slides.length')
+    page.hover(f'.thumb >> nth={pano}')
+    page.click(f'.thumb >> nth={pano} >> .thumb-del')
+    check(st('s.deck.slides.length') == n1 - 2, 'deleting a photo on 2 slides deletes both slides')
+    check(page.locator('.thumb .thumb-del').count() == st('s.deck.slides.length'), 'one delete button per slide group')
+    page.click('.thumb >> nth=0'); page.keyboard.press('Delete')
+    check(st('s.deck.slides.length') == n1 - 3, 'Delete key removes the selected slide')
 
     # Mobile layout sanity
     page.set_viewport_size({'width': 390, 'height': 844})

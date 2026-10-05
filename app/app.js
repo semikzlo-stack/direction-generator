@@ -1,7 +1,7 @@
 import { loadBrand } from '../core/brand.js';
 import { renderSlide, textStyle, photoLayout } from '../core/render.js';
 import { newDeck, nextPostColors, setPostColor, migrateDeck, syncSpans, photoSlices, deckWarnings, uid,
-  typesFor, addableTypes, setSlideType, insertPreset, canMove, coverRange } from '../core/deck.js';
+  typesFor, addableTypes, setSlideType, insertPreset, canMove, moveGroup, coverRange, groupRange, deleteGroup } from '../core/deck.js';
 import { clampPhoto, ZOOM_MAX } from '../core/photo.js';
 import { typo, layoutBlock } from '../core/text.js';
 import { slideFilename, makeZip, canvasToBytes, downloadBytes } from '../core/export.js';
@@ -157,6 +157,16 @@ function renderStrip() {
       b.className = 'badge'; b.textContent = '!';
       item.append(b);
     }
+    const [g0, g1] = groupRange(state.deck, i);
+    // One delete button per group, on its first slide.
+    if (i === g0) {
+      const del = document.createElement('span');
+      del.className = 'thumb-del'; del.textContent = '✕';
+      del.setAttribute('role', 'button');
+      del.title = g1 > g0 ? t().deleteBoth : t().deleteSlide;
+      del.onclick = e => { e.stopPropagation(); deleteSlide(i); };
+      item.append(del);
+    }
     item.onclick = () => select(i);
     strip.append(item);
   });
@@ -170,6 +180,8 @@ function refreshPanel() {
   const card = state.brand.cards[slide.type];
   const n = state.deck.slides.length;
   $('slideTitle').textContent = `${state.sel + 1} / ${n}`;
+  const [g0, g1] = groupRange(state.deck, state.sel);
+  $('deleteBtn').title = g1 > g0 ? t().deleteBoth : t().deleteSlide;
   $('moveLeftBtn').disabled = !canMove(state.deck, state.sel, -1);
   $('moveRightBtn').disabled = !canMove(state.deck, state.sel, 1);
 
@@ -301,10 +313,11 @@ function setType(type) {
   changed();
 }
 
-/** New slides go after the current one, but never inside the split cover. */
+/** New slides go after the current slide's group: never inside a cover or a panorama. */
 function insertIndex() {
+  const [, to] = groupRange(state.deck, state.sel);
   const cover = coverRange(state.deck);
-  return Math.max(state.sel + 1, cover ? cover[1] + 1 : 0);
+  return Math.max(to + 1, cover ? cover[1] + 1 : 0);
 }
 
 function addSlide(type) {
@@ -321,24 +334,15 @@ function addPreset(name) {
 
 function moveSlide(dir) {
   if (!canMove(state.deck, state.sel, dir)) return;
-  const a = state.sel, b = a + dir, s = state.deck.slides;
-  [s[a], s[b]] = [s[b], s[a]];
-  state.sel = b;
+  state.sel = moveGroup(state.deck, state.sel, dir);
   changed();
 }
 
-function deleteSlide() {
-  if (current().part != null) {
-    // Deleting either half of the split cover turns it back into a regular cover.
-    setSlideType(state.brand, state.deck, 0, 'image-header');
-    state.sel = 0;
-    pruneUnusedPhotos();
-    return changed();
-  }
-  if (state.deck.slides.length <= 1) return toast(t().deleteLast);
-  state.deck.slides.splice(state.sel, 1);
-  state.sel = Math.min(state.sel, state.deck.slides.length - 1);
-  pruneUnusedPhotos();
+/** Delete a slide; double slides (split cover, photo on 2 slides) go together. */
+function deleteSlide(index = state.sel) {
+  const [from] = groupRange(state.deck, index);
+  if (!deleteGroup(state.deck, index)) return toast(t().deleteLast);
+  state.sel = Math.min(from, state.deck.slides.length - 1);
   changed();
 }
 
@@ -616,7 +620,7 @@ function wire() {
   };
   $('moveLeftBtn').onclick = () => moveSlide(-1);
   $('moveRightBtn').onclick = () => moveSlide(1);
-  $('deleteBtn').onclick = deleteSlide;
+  $('deleteBtn').onclick = () => deleteSlide();
 
   $('addBtn').onclick = e => { e.stopPropagation(); $('addMenu').classList.toggle('open'); };
   document.addEventListener('click', e => { if (!$('addMenu').contains(e.target)) $('addMenu').classList.remove('open'); });
@@ -628,6 +632,7 @@ function wire() {
 
   document.addEventListener('keydown', e => {
     if (e.target.matches('textarea, input, [contenteditable]')) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSlide(); }
     if (e.key === 'ArrowLeft') select(state.sel - 1);
     if (e.key === 'ArrowRight') select(state.sel + 1);
   });
