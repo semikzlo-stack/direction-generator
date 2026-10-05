@@ -1,0 +1,1 @@
+{ "name": "dg-tests", "private": true, "type": "module", "devDependencies": { "@napi-rs/canvas": "^0.1.65" } }
