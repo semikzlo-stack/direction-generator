@@ -48,20 +48,35 @@
   },
 
   "cards": {
-    "image": {
-      "photo": "cover",
-      "text": null
-    },
     "image-header": {
       "photo": "cover",
       "gradient": true,
       "text": { "role": "header", "color": "onImage", "anchor": "bottom", "maxLines": 4, "overflow": "warn" }
+    },
+    "cover-split": {
+      "slides": 2,
+      "firstOnly": true,
+      "addable": false,
+      "photo": "split",
+      "background": "postColor",
+      "text": { "role": "header", "color": "onColor", "anchor": "bottom", "maxLines": 1, "overflow": "warn", "onPart": 0 },
+      "_source": "Figma node 132:106 (slides 1–2). Photo box 1020×1077 with 60px outer margins, runs across both slides; one header line under it on slide 1.",
+      "_open": "Mockup shows a teal background with a lime bottom line; built with the post color for both, per 'one color per post'."
+    },
+    "image": {
+      "photo": "cover",
+      "text": null
     },
     "paragraph": {
       "photo": null,
       "background": "postColor",
       "text": { "role": "paragraph", "color": "onColor", "anchor": "bottom", "overflow": "warn" }
     }
+  },
+
+  "presets": {
+    "panorama": { "slides": ["image", "image"], "sharedPhoto": true,
+      "_source": "Figma node 132:106 (slides 3–4): one full-bleed photo across two slides." }
   },
 
   "storyOrder": {
@@ -82,7 +97,11 @@
       "bottomLine": 10,
       "photoArea": { "x": 0,  "y": 0,  "w": 1080, "h": 1340 },
       "safeZone":  { "x": 60, "y": 60, "w": 960,  "h": 1220 },
-      "fontSize": 75
+      "fontSize": 75,
+      "splitCover": [
+        { "x": 60, "y": 60, "w": 1020, "h": 1077 },
+        { "x": 0,  "y": 60, "w": 1020, "h": 1077 }
+      ]
     },
     "linkedin": {
       "width": 1080,
@@ -91,6 +110,11 @@
       "photoArea": { "x": 0,   "y": 0,   "w": 1080, "h": 1340 },
       "safeZone":  { "x": 120, "y": 120, "w": 840,  "h": 1110 },
       "fontSize": 65,
+      "splitCover": [
+        { "x": 120, "y": 120, "w": 960, "h": 978 },
+        { "x": 0,   "y": 120, "w": 960, "h": 978 }
+      ],
+      "_splitCoverNote": "Derived, not in Figma: 120px margins; photo ends 60px above the one-line header (same rule as Instagram: 1137 = 1280 − 82.5 − 60).",
       "_note": "Same cards and rules as Instagram; only margins and font size differ."
     }
   },

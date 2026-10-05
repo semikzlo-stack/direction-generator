@@ -8,7 +8,9 @@ export const I18N = {
     photo: 'Photo', continuePhoto: 'Continue the photo from the previous slide',
     choosePhoto: 'Choose photo', replacePhoto: 'Replace photo', resetPhoto: 'Reset framing', zoom: 'Zoom',
     spanHint: (i, n) => `Part ${i} of ${n} of one photo. Keep faces and text away from the slide edge.`,
-    types: { 'image': 'Photo', 'image-header': 'Photo + header', 'paragraph': 'Paragraph' },
+    types: { 'image': 'Photo', 'image-header': 'Photo + header', 'cover-split': 'Cover on two slides', 'paragraph': 'Paragraph' },
+    presets: { panorama: 'Photo across two slides' },
+    coverPartNote: 'Second half of the split cover. Change the type and header on slide 1.',
     lines: (n, max) => max ? `${n} / ${max} lines` : `${n} lines`,
     w: {
       'no-photo': 'Add a photo.',
@@ -34,7 +36,9 @@ export const I18N = {
     photo: 'Zdjęcie', continuePhoto: 'Kontynuuj zdjęcie z poprzedniego slajdu',
     choosePhoto: 'Wybierz zdjęcie', replacePhoto: 'Zmień zdjęcie', resetPhoto: 'Przywróć kadr', zoom: 'Powiększenie',
     spanHint: (i, n) => `Część ${i} z ${n} jednego zdjęcia. Trzymaj twarze i napisy z dala od krawędzi slajdu.`,
-    types: { 'image': 'Zdjęcie', 'image-header': 'Zdjęcie + nagłówek', 'paragraph': 'Akapit' },
+    types: { 'image': 'Zdjęcie', 'image-header': 'Zdjęcie + nagłówek', 'cover-split': 'Okładka na dwa slajdy', 'paragraph': 'Akapit' },
+    presets: { panorama: 'Zdjęcie na dwa slajdy' },
+    coverPartNote: 'Druga połowa okładki. Typ i nagłówek zmienisz na slajdzie 1.',
     lines: (n, max) => max ? `${n} / ${max} linii` : `${n} linii`,
     w: {
       'no-photo': 'Dodaj zdjęcie.',

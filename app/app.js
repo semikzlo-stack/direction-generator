@@ -1,6 +1,7 @@
 import { loadBrand } from '../core/brand.js';
-import { renderSlide, textStyle } from '../core/render.js';
-import { newDeck, nextColor, syncSpans, photoSlices, deckWarnings, uid } from '../core/deck.js';
+import { renderSlide, textStyle, photoLayout } from '../core/render.js';
+import { newDeck, nextColor, syncSpans, photoSlices, deckWarnings, uid,
+  typesFor, addableTypes, setSlideType, insertPreset, canMove, coverRange } from '../core/deck.js';
 import { clampPhoto, ZOOM_MAX } from '../core/photo.js';
 import { typo, layoutBlock } from '../core/text.js';
 import { slideFilename, makeZip, canvasToBytes, downloadBytes } from '../core/export.js';
@@ -105,14 +106,13 @@ function drawOverlay() {
   }
 
   // Seams: mark the slide edges where the photo continues onto a neighbour.
-  const s = photoSlices(state.deck)[state.sel];
-  const card = state.brand.cards[state.deck.slides[state.sel].type];
-  if (s && s.span > 1 && card.photo) {
+  const lay = photoLayout(state.brand, state.deck, state.sel);
+  if (lay && lay.span > 1) {
     ctx.save();
     ctx.fillStyle = 'rgba(255,190,0,.9)';
-    const w = 6 * px, a = f.photoArea;
-    if (s.index > 0) ctx.fillRect(0, a.y, w, a.h);
-    if (s.index < s.span - 1) ctx.fillRect(f.width - w, a.y, w, a.h);
+    const w = 6 * px, d = lay.dest;
+    if (lay.part > 0) ctx.fillRect(0, d.y, w, d.h);
+    if (lay.part < lay.span - 1) ctx.fillRect(f.width - w, d.y, w, d.h);
     ctx.restore();
   }
 }
@@ -131,10 +131,10 @@ function renderStrip() {
   state.deck.slides.forEach((slide, i) => {
     const item = document.createElement('button');
     item.className = 'thumb' + (i === state.sel ? ' selected' : '');
-    const s = slices[i];
-    if (s && s.span > 1) {
-      if (s.index > 0) item.classList.add('span-left');
-      if (s.index < s.span - 1) item.classList.add('span-right');
+    const lay = photoLayout(state.brand, state.deck, i, slices);
+    if (lay && lay.span > 1) {
+      if (lay.part > 0) item.classList.add('span-left');
+      if (lay.part < lay.span - 1) item.classList.add('span-right');
     }
     const c = document.createElement('canvas');
     c.width = TW * dpr; c.height = TH * dpr;
@@ -166,31 +166,40 @@ function refreshPanel() {
   const card = state.brand.cards[slide.type];
   const n = state.deck.slides.length;
   $('slideTitle').textContent = t().of(state.sel + 1, n);
-  $('moveLeftBtn').disabled = state.sel === 0;
-  $('moveRightBtn').disabled = state.sel === n - 1;
+  $('moveLeftBtn').disabled = !canMove(state.deck, state.sel, -1);
+  $('moveRightBtn').disabled = !canMove(state.deck, state.sel, 1);
 
-  document.querySelectorAll('#typeSeg button').forEach(b => b.classList.toggle('active', b.dataset.type === slide.type));
+  const allowed = typesFor(state.brand, state.deck, state.sel);
+  document.querySelectorAll('#typeSeg button').forEach(b => {
+    b.hidden = !allowed.includes(b.dataset.type);
+    b.classList.toggle('active', b.dataset.type === slide.type);
+  });
+  $('typeField').hidden = allowed.length === 0;
+  $('coverPartNote').hidden = slide.part !== 1;
 
-  $('textField').hidden = !card.text;
-  if (card.text && $('textInput').value !== (slide.text || '')) $('textInput').value = slide.text || '';
+  const hasText = !!card.text && (card.text.onPart == null || card.text.onPart === (slide.part || 0));
+  $('textField').hidden = !hasText;
+  if (hasText && $('textInput').value !== (slide.text || '')) $('textInput').value = slide.text || '';
 
   $('photoField').hidden = !card.photo;
   if (card.photo) {
     const prev = state.deck.slides[state.sel - 1];
-    const canContinue = !!(prev && state.brand.cards[prev.type].photo && prev.photoId);
+    // Only full-bleed photos chain into panoramas; the split cover is a fixed pair.
+    const canContinue = !!(prev && card.photo === 'cover' && state.brand.cards[prev.type].photo === 'cover' && prev.photoId);
     $('continueRow').hidden = !canContinue;
     $('continueToggle').checked = canContinue && slide.photoId === prev.photoId;
 
-    const photo = slide.photoId && state.deck.photos[slide.photoId];
+    const p0 = slide.photoId && state.deck.photos[slide.photoId];
+    const photo = p0 && p0.image ? p0 : null;
     $('uploadBtn').textContent = photo ? t().replacePhoto : t().choosePhoto;
     $('resetPhotoBtn').disabled = !photo;
     $('zoomSlider').disabled = !photo;
     if (photo) $('zoomSlider').value = Math.round(((photo.zoom || 1) - 1) / (ZOOM_MAX - 1) * 100);
 
-    const s = photoSlices(state.deck)[state.sel];
-    $('spanHint').textContent = s && s.span > 1 ? t().spanHint(s.index + 1, s.span) : '';
+    const lay = photoLayout(state.brand, state.deck, state.sel);
+    $('spanHint').textContent = lay && lay.span > 1 ? t().spanHint(lay.part + 1, lay.span) : '';
   }
-  $('dragHint').classList.toggle('show', !!(card.photo && slide.photoId));
+  $('dragHint').classList.toggle('show', !!(card.photo && currentPhoto()));
 }
 
 function renderPanelStatus() {
@@ -198,7 +207,7 @@ function renderPanelStatus() {
   const card = state.brand.cards[slide.type];
   // Line counter
   const lc = $('lineCounter');
-  if (card.text && slide.text && slide.text.trim()) {
+  if (!$('textField').hidden && slide.text && slide.text.trim()) {
     const ctx = preview.getContext('2d');
     const style = textStyle(state.brand, state.deck.format);
     const lay = layoutBlock(ctx, typo(slide.text, state.brand.typography), style, fmt().safeZone, { maxLines: card.text.maxLines });
@@ -261,40 +270,61 @@ function buildTypeSeg() {
 
 function buildAddMenu() {
   const menu = $('addMenu');
-  for (const type of Object.keys(state.brand.cards)) {
+  for (const type of addableTypes(state.brand)) {
     const b = document.createElement('button');
     b.dataset.type = type;
     b.onclick = () => { addSlide(type); menu.classList.remove('open'); };
+    menu.append(b);
+  }
+  for (const name of Object.keys(state.brand.presets || {})) {
+    const b = document.createElement('button');
+    b.dataset.preset = name;
+    b.onclick = () => { addPreset(name); menu.classList.remove('open'); };
     menu.append(b);
   }
 }
 
 // ───────────────────────── actions ─────────────────────────
 function setType(type) {
-  const slide = current();
-  if (slide.type === type) return;
-  slide.type = type;
-  const card = state.brand.cards[type];
-  if (!card.photo) delete slide.photoId;
+  setSlideType(state.brand, state.deck, state.sel, type);
+  pruneUnusedPhotos();
   changed();
 }
 
+/** New slides go after the current one, but never inside the split cover. */
+function insertIndex() {
+  const cover = coverRange(state.deck);
+  return Math.max(state.sel + 1, cover ? cover[1] + 1 : 0);
+}
+
 function addSlide(type) {
-  const slide = { id: uid('s'), type, text: '' };
-  state.deck.slides.splice(state.sel + 1, 0, slide);
-  state.sel += 1;
+  const at = insertIndex();
+  state.deck.slides.splice(at, 0, { id: uid('s'), type, text: '' });
+  state.sel = at;
+  changed();
+}
+
+function addPreset(name) {
+  state.sel = insertPreset(state.brand, state.deck, name, insertIndex() - 1);
   changed();
 }
 
 function moveSlide(dir) {
+  if (!canMove(state.deck, state.sel, dir)) return;
   const a = state.sel, b = a + dir, s = state.deck.slides;
-  if (b < 0 || b >= s.length) return;
   [s[a], s[b]] = [s[b], s[a]];
   state.sel = b;
   changed();
 }
 
 function deleteSlide() {
+  if (current().part != null) {
+    // Deleting either half of the split cover turns it back into a regular cover.
+    setSlideType(state.brand, state.deck, 0, 'image-header');
+    state.sel = 0;
+    pruneUnusedPhotos();
+    return changed();
+  }
   if (state.deck.slides.length <= 1) return toast(t().deleteLast);
   state.deck.slides.splice(state.sel, 1);
   state.sel = Math.min(state.sel, state.deck.slides.length - 1);
@@ -345,9 +375,16 @@ function toggleContinue(on) {
   changed();
 }
 
+/** The current slide's photo, only if an image has been chosen. */
 function currentPhoto() {
   const slide = current();
-  return slide.photoId ? state.deck.photos[slide.photoId] : null;
+  const p = slide.photoId ? state.deck.photos[slide.photoId] : null;
+  return p && p.image ? p : null;
+}
+
+function currentStrip() {
+  const lay = photoLayout(state.brand, state.deck, state.sel);
+  return lay ? lay.strip : fmt().photoArea;
 }
 
 // Drag to pan
@@ -365,7 +402,7 @@ function onPointerMove(e) {
   const photo = currentPhoto();
   photo.offX = drag.ox + (e.clientX - drag.x) / viewScale;
   photo.offY = drag.oy + (e.clientY - drag.y) / viewScale;
-  clampPhoto(photo, fmt().photoArea);
+  clampPhoto(photo, currentStrip());
   if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; renderMain(); }); }
 }
 function onPointerUp() {
@@ -489,7 +526,8 @@ function applyLang(lang) {
     const v = t()[el.dataset.i18n];
     if (typeof v === 'string') el.textContent = v;
   });
-  document.querySelectorAll('#typeSeg button, #addMenu button').forEach(b => { b.textContent = t().types[b.dataset.type]; });
+  document.querySelectorAll('#typeSeg button, #addMenu button[data-type]').forEach(b => { b.textContent = t().types[b.dataset.type]; });
+  document.querySelectorAll('#addMenu button[data-preset]').forEach(b => { b.textContent = t().presets[b.dataset.preset]; });
   document.querySelectorAll('#lang button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
   if (state.deck) { refreshPanel(); renderPanelStatus(); }
 }
@@ -519,7 +557,7 @@ function wire() {
   $('zoomSlider').oninput = e => {
     const p = currentPhoto(); if (!p) return;
     p.zoom = 1 + (Number(e.target.value) / 100) * (ZOOM_MAX - 1);
-    clampPhoto(p, fmt().photoArea);
+    clampPhoto(p, currentStrip());
     renderMain();
   };
   $('zoomSlider').onchange = () => renderStrip();

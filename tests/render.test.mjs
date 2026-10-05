@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { renderSlide } from '../core/render.js';
 import { typo, parseRuns, layoutBlock } from '../core/text.js';
-import { newDeck, syncSpans, photoSlices, nextColor, deckWarnings } from '../core/deck.js';
+import { newDeck, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes } from '../core/deck.js';
 import { makeZip, slideFilename, slugify } from '../core/export.js';
 
 const brand = JSON.parse(readFileSync(new URL('../brands/media/config.json', import.meta.url)));
@@ -99,5 +99,46 @@ for (const format of ['instagram', 'linkedin']) {
   const long = layoutBlock(ctx, 'słowo '.repeat(200), style, box, { maxLines: 4 });
   assert.ok(long.warnings.some(w => w.code === 'overflow'));
   assert.ok(long.warnings.some(w => w.code === 'too-many-lines'));
+}
+// ── split cover ──
+{
+  const deck = newDeck(brand, { format: 'instagram', colorId: 'mint-teal' });
+  setSlideType(brand, deck, 0, 'cover-split');
+  assert.equal(deck.slides.length, 4, 'split cover inserts its second half');
+  assert.deepEqual(deck.slides.slice(0, 2).map(s => s.part), [0, 1]);
+  assert.equal(deck.slides[0].photoId, deck.slides[1].photoId);
+  assert.ok(!addableTypes(brand).includes('cover-split'), 'cover is not addable');
+  assert.ok(!typesFor(brand, deck, 2).includes('cover-split'), 'cover only on slide 1');
+  assert.deepEqual(typesFor(brand, deck, 1), [], 'second half has no type switch');
+  assert.ok(!canMove(deck, 2, -1) && !canMove(deck, 0, 1), 'cover slides stay first');
+
+  deck.slides[0].text = 'Zamczystość w „Vogue”';
+  deck.photos[deck.slides[0].photoId] = { ...photoB, id: deck.slides[0].photoId };
+  const teal = [0x64, 0xC7, 0xB2];
+  const px = (c, x, y) => [...c.getContext('2d').getImageData(x, y, 1, 1).data.slice(0, 3)];
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 6);
+  const sheet = createCanvas(1080, 675); const sx = sheet.getContext('2d');
+  for (const i of [0, 1]) {
+    const c = createCanvas(1080, 1350);
+    const { warnings } = renderSlide(c.getContext('2d'), brand, deck, i);
+    assert.deepEqual(warnings, [], `split cover slide ${i + 1}: ${JSON.stringify(warnings)}`);
+    if (i === 0) { assert.ok(near(px(c, 30, 600), teal), 'left margin'); assert.ok(!near(px(c, 90, 600), teal), 'photo starts at 60'); assert.ok(!near(px(c, 1075, 600), teal), 'photo runs to the right edge'); }
+    else { assert.ok(near(px(c, 1050, 600), teal), 'right margin'); assert.ok(!near(px(c, 5, 600), teal), 'photo continues from the left edge'); }
+    assert.ok(near(px(c, 540, 1160), teal), 'band under the photo');
+    sx.drawImage(c, i * 540, 0, 540, 675);
+  }
+  writeFileSync(out('split_cover.png'), sheet.toBuffer('image/png'));
+  deck.slides[0].text = 'Zamczystość w „Vogue” i jeszcze jedna długa linia nagłówka';
+  const w = renderSlide(createCanvas(1080, 1350).getContext('2d'), brand, deck, 0).warnings;
+  assert.ok(w.some(x => x.code === 'too-many-lines' && x.max === 1), 'split cover allows one line');
+
+  setSlideType(brand, deck, 0, 'image-header');
+  assert.equal(deck.slides.length, 3, 'leaving split cover removes the second half');
+  assert.equal(deck.slides[0].part, undefined);
+
+  const at = insertPreset(brand, deck, 'panorama', 0);
+  assert.equal(at, 1);
+  assert.equal(deck.slides[1].photoId, deck.slides[2].photoId);
+  assert.equal(photoSlices(deck)[2].span, 2, 'panorama preset spans two slides');
 }
 console.log('all checks passed');
