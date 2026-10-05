@@ -15,11 +15,28 @@ export function deckSlug(deck) {
   return slugify(first ? first.text : '');
 }
 
-export function slideFilename(deck, index, date = new Date()) {
+/** "261005_ostatni-zamek_instagram" — names the post's folder and ZIP. */
+export function postBaseName(deck, date = new Date()) {
   const yy = String(date.getFullYear()).slice(-2);
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
-  return `${yy}${mm}${dd}_${deckSlug(deck)}_${deck.format}_${String(index + 1).padStart(2, '0')}.png`;
+  return `${yy}${mm}${dd}_${deckSlug(deck)}_${deck.format}`;
+}
+
+const num = i => String(i + 1).padStart(2, '0');
+
+/** Single-slide download: date first, so files from different posts group together. */
+export function slideFilename(deck, index, date = new Date()) {
+  return `${postBaseName(deck, date)}_${num(index)}.png`;
+}
+
+/**
+ * Inside the ZIP: one folder per post, slide number first, so every file
+ * manager and the phone's photo picker list the slides in carousel order.
+ */
+export function zipEntryName(deck, index, date = new Date()) {
+  const base = postBaseName(deck, date);
+  return `${base}/${num(index)}_${base}.png`;
 }
 
 // ── ZIP (store) ──

@@ -4,7 +4,7 @@ import { newDeck, nextPostColors, setPostColor, migrateDeck, syncSpans, photoSli
   typesFor, addableTypes, setSlideType, insertPreset, canMove, moveGroup, coverRange, groupRange, deleteGroup } from '../core/deck.js';
 import { clampPhoto, ZOOM_MAX } from '../core/photo.js';
 import { typo, layoutBlock } from '../core/text.js';
-import { slideFilename, makeZip, canvasToBytes, downloadBytes } from '../core/export.js';
+import { slideFilename, zipEntryName, postBaseName, makeZip, canvasToBytes, downloadBytes } from '../core/export.js';
 import { saveDraft, listDrafts, getDraft, deleteDraft, serialiseDeck } from '../core/storage.js';
 import { I18N } from './i18n.js';
 import { createTextEditor } from './editor.js';
@@ -182,8 +182,8 @@ function refreshPanel() {
   $('slideTitle').textContent = `${state.sel + 1} / ${n}`;
   const [g0, g1] = groupRange(state.deck, state.sel);
   $('deleteBtn').title = g1 > g0 ? t().deleteBoth : t().deleteSlide;
-  $('moveLeftBtn').disabled = !canMove(state.deck, state.sel, -1);
-  $('moveRightBtn').disabled = !canMove(state.deck, state.sel, 1);
+  $('moveLeftBtn').disabled = !canMove(state.deck, state.sel, -1, state.brand);
+  $('moveRightBtn').disabled = !canMove(state.deck, state.sel, 1, state.brand);
 
   const allowed = typesFor(state.brand, state.deck, state.sel);
   document.querySelectorAll('#typeSeg button').forEach(b => {
@@ -333,8 +333,8 @@ function addPreset(name) {
 }
 
 function moveSlide(dir) {
-  if (!canMove(state.deck, state.sel, dir)) return;
-  state.sel = moveGroup(state.deck, state.sel, dir);
+  if (!canMove(state.deck, state.sel, dir, state.brand)) return;
+  state.sel = moveGroup(state.deck, state.sel, dir, state.brand);
   changed();
 }
 
@@ -448,9 +448,9 @@ async function downloadAll() {
   if (bad && !confirm(t().exportWithIssues(bad))) return;
   const files = [];
   for (let i = 0; i < state.deck.slides.length; i++) {
-    files.push({ name: slideFilename(state.deck, i), data: await canvasToBytes(renderFull(i)) });
+    files.push({ name: zipEntryName(state.deck, i), data: await canvasToBytes(renderFull(i)) });
   }
-  const zipName = slideFilename(state.deck, 0).replace(/_\d+\.png$/, '.zip');
+  const zipName = `${postBaseName(state.deck)}.zip`;
   downloadBytes(makeZip(files), zipName, 'application/zip');
   lsSet(LS.lastColor, state.deck.lineColorId);
 }

@@ -51,6 +51,8 @@
 
   "cards": {
     "image-header": {
+      "firstOnly": true,
+      "addable": false,
       "photo": "cover",
       "gradient": true,
       "text": { "role": "header", "color": "onImage", "anchor": "bottom", "maxLines": 4, "overflow": "warn" }

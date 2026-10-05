@@ -106,6 +106,9 @@ with sync_playwright() as p:
     z = zipfile.ZipFile(io.BytesIO(data))
     names = z.namelist()
     check(len(names) == 4 and all(n.endswith('.png') for n in names), f'ZIP has 4 PNGs: {names[:1]}…')
+    folder = d.suggested_filename[:-4]
+    check(names == sorted(names) and all(n.startswith(folder + '/') for n in names), 'ZIP: one folder, slides sorted in carousel order')
+    check([n.split('/')[1][:2] for n in names] == ['01', '02', '03', '04'], 'ZIP: slide number first')
     check(d.suggested_filename.endswith('_linkedin.zip'), f'zip name: {d.suggested_filename}')
     z.extract(names[2], OUT); z.extract(names[3], OUT)
 

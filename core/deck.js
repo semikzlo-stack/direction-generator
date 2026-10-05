@@ -171,12 +171,19 @@ export function insertPreset(brand, deck, name, index) {
   return at;
 }
 
-/** Can slide `index` (with its group) move by `dir`? Split-cover slides stay at the start. */
-export function canMove(deck, index, dir) {
+/** Is this slide a cover (a first-only card)? */
+function isCover(brand, slide) {
+  if (slide.part != null) return true;
+  const card = brand && brand.cards[slide.type];
+  return !!(card && card.firstOnly);
+}
+
+/** Can slide `index` (with its group) move by `dir`? Covers stay at the start. */
+export function canMove(deck, index, dir, brand) {
   const [a, b] = groupRange(deck, index);
   const n = dir < 0 ? a - 1 : b + 1;
   if (n < 0 || n >= deck.slides.length) return false;
-  if (deck.slides[index].part != null || deck.slides[n].part != null) return false;
+  if (isCover(brand, deck.slides[index]) || isCover(brand, deck.slides[n])) return false;
   return true;
 }
 
@@ -184,8 +191,8 @@ export function canMove(deck, index, dir) {
  * Move slide `index` together with its group past the neighbouring group.
  * Returns the new index of the slide.
  */
-export function moveGroup(deck, index, dir) {
-  if (!canMove(deck, index, dir)) return index;
+export function moveGroup(deck, index, dir, brand) {
+  if (!canMove(deck, index, dir, brand)) return index;
   const [a, b] = groupRange(deck, index);
   const [c, d] = groupRange(deck, dir < 0 ? a - 1 : b + 1);
   const s = deck.slides;

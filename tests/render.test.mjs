@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { renderSlide } from '../core/render.js';
 import { typo, parseRuns, layoutBlock } from '../core/text.js';
 import { newDeck, setPostColor, nextPostColors, syncSpans, photoSlices, nextColor, deckWarnings, setSlideType, insertPreset, canMove, typesFor, addableTypes, deleteGroup, groupRange, moveGroup } from '../core/deck.js';
-import { makeZip, slideFilename, slugify } from '../core/export.js';
+import { makeZip, slideFilename, zipEntryName, slugify } from '../core/export.js';
 
 const brand = JSON.parse(readFileSync(new URL('../brands/media/config.json', import.meta.url)));
 for (const f of brand.fonts) {
@@ -120,6 +120,8 @@ for (const format of ['instagram', 'linkedin']) {
   assert.equal(deck.slides[0].photoId, deck.slides[1].photoId);
   assert.ok(!addableTypes(brand).includes('cover-split'), 'cover is not addable');
   assert.ok(!typesFor(brand, deck, 2).includes('cover-split'), 'cover only on slide 1');
+  assert.ok(!typesFor(brand, deck, 2).includes('image-header'), 'photo + header only on slide 1');
+  assert.ok(!addableTypes(brand).includes('image-header'), 'photo + header is not addable');
   assert.deepEqual(typesFor(brand, deck, 1), [], 'second half has no type switch');
   assert.ok(!canMove(deck, 2, -1) && !canMove(deck, 0, 1), 'cover slides stay first');
 
@@ -160,15 +162,23 @@ for (const format of ['instagram', 'linkedin']) {
   assert.equal(deck.slides.length, 2, 'deleting a cover half removes both halves');
   assert.ok(!deleteGroup(deck, 0) || deck.slides.length >= 1);
 }
+// ── zip names ──
+{
+  const d = newDeck(brand, {}); d.slides[0].text = 'Zamek';
+  assert.equal(zipEntryName(d, 2, new Date(2026, 9, 5)), '261005_zamek_instagram/03_261005_zamek_instagram.png');
+}
+
 // ── moving groups ──
 {
   const d = newDeck(brand, {});           // header, paragraph, image
   insertPreset(brand, d, 'panorama', 2);  // header, paragraph, image, P, P
   const pid = d.slides[3].photoId;
-  let i = moveGroup(d, 3, -1);            // panorama jumps over the single image
+  assert.ok(!canMove(d, 1, -1, brand), 'nothing moves in front of the cover');
+  assert.ok(!canMove(d, 0, 1, brand), 'the cover does not move');
+  let i = moveGroup(d, 3, -1, brand);     // panorama jumps over the single image
   assert.equal(i, 2);
   assert.deepEqual(d.slides.map(s => s.photoId === pid), [false, false, true, true, false]);
-  i = moveGroup(d, 1, 1);                 // paragraph jumps over the whole panorama
+  i = moveGroup(d, 1, 1, brand);          // paragraph jumps over the whole panorama
   assert.equal(i, 3);
   assert.deepEqual(d.slides.map(s => s.type), ['image-header', 'image', 'image', 'paragraph', 'image']);
   assert.equal(photoSlices(d)[1].span, 2, 'panorama stays intact');
