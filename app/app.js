@@ -182,6 +182,13 @@ function dropSide(e, el) {
 function wireDropZone() {
   const strip = $('strip');
   strip.addEventListener('dragover', e => {
+    if (isFileDrag(e)) {
+      e.preventDefault();
+      const el = e.target.closest('.thumb');
+      [...strip.children].forEach(x => x.classList.toggle('drop-photo', x === el));
+      strip.classList.toggle('drop-end', !el);
+      return;
+    }
     if (dragFrom == null) return;
     const el = e.target.closest('.thumb'); if (!el) return;
     e.preventDefault();
@@ -189,7 +196,20 @@ function wireDropZone() {
     [...strip.children].forEach(x => x.classList.remove('drop-before', 'drop-after'));
     el.classList.add(side < 0 ? 'drop-before' : 'drop-after');
   });
+  strip.addEventListener('dragleave', e => {
+    if (strip.contains(e.relatedTarget)) return;
+    [...strip.children].forEach(x => x.classList.remove('drop-photo'));
+    strip.classList.remove('drop-end');
+  });
   strip.addEventListener('drop', e => {
+    if (isFileDrag(e)) {
+      e.preventDefault();
+      const el = e.target.closest('.thumb');
+      [...strip.children].forEach(x => x.classList.remove('drop-photo'));
+      strip.classList.remove('drop-end');
+      const i = el ? [...strip.children].indexOf(el) : state.deck.slides.length;
+      return placePhotos(e.dataTransfer.files, i);
+    }
     const el = e.target.closest('.thumb');
     if (dragFrom == null || !el) return;
     e.preventDefault();
@@ -392,21 +412,57 @@ function blobToImage(blob) {
   });
 }
 
-async function onFile(file) {
-  if (!file) return;
-  const image = await blobToImage(file);
-  const slide = current();
+const isImage = f => f && f.type.startsWith('image/');
+const isFileDrag = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files');
+
+/** Put `image` on slide `index` (replacing a panorama's picture keeps its slides together). */
+function setPhotoOn(index, image, file) {
+  const slide = state.deck.slides[index];
   const existing = slide.photoId && state.deck.photos[slide.photoId];
   if (existing) {
-    // Replace the picture of the whole panorama, keep its slides together.
     Object.assign(existing, { image, blob: file, zoom: 1, offX: 0, offY: 0 });
   } else {
     const id = uid('p');
-    state.deck.photos[id] = { id, image, blob: file, span: 1, zoom: 1, offX: 0, offY: 0 };
+    state.deck.photos[id] = { id, image, blob: file, zoom: 1, offX: 0, offY: 0 };
     slide.photoId = id;
   }
+}
+
+/** Index right after the group of slide `index` (never inside the cover). */
+function afterGroup(index) {
+  const [, to] = groupRange(state.deck, index);
+  const cover = coverRange(state.deck);
+  return Math.max(to + 1, cover ? cover[1] + 1 : 0);
+}
+
+/**
+ * Place photos starting at slide `index`. The first goes on that slide if it
+ * has a photo slot, otherwise on a new photo slide after it; every further
+ * photo gets its own new slide, in the order the files were given.
+ */
+async function placePhotos(files, index) {
+  files = [...files].filter(isImage);
+  if (!files.length) return;
+  const images = await Promise.all(files.map(blobToImage));
+  // index past the last slide means "append".
+  const append = index >= state.deck.slides.length;
+  let at = append ? state.deck.slides.length - 1 : index, first = null;
+  images.forEach((image, k) => {
+    const slide = state.deck.slides[at];
+    const card = slide && state.brand.cards[slide.type];
+    const fits = k === 0 && !append && card && card.photo;
+    if (!fits) {
+      at = slide ? afterGroup(at) : state.deck.slides.length;
+      state.deck.slides.splice(at, 0, { id: uid('s'), type: 'image', text: '' });
+    }
+    setPhotoOn(at, image, files[k]);
+    if (first == null) first = at;
+  });
+  state.sel = first;
   changed();
 }
+
+function onFile(file) { return placePhotos([file], state.sel); }
 
 function toggleContinue(on) {
   const slide = current();
@@ -592,6 +648,7 @@ function applyLang(lang) {
   document.querySelectorAll('#typeSeg button, #addMenu button[data-type]').forEach(b => { b.textContent = t().types[b.dataset.type]; });
   document.querySelectorAll('#addMenu button[data-preset]').forEach(b => { b.textContent = t().presets[b.dataset.preset]; });
   document.querySelectorAll('#lang button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+  $('canvasWrap').dataset.drop = t().dropPhoto;
   if (state.deck) { refreshPanel(); renderPanelStatus(); renderDrafts(); }
 }
 
@@ -634,7 +691,7 @@ function wire() {
   $('italicBtn').onclick = () => state.editor.toggleItalic();
 
   $('uploadBtn').onclick = () => $('fileInput').click();
-  $('fileInput').onchange = e => { onFile(e.target.files[0]); e.target.value = ''; };
+  $('fileInput').onchange = e => { placePhotos(e.target.files, state.sel); e.target.value = ''; };
   $('continueToggle').onchange = e => toggleContinue(e.target.checked);
   $('resetPhotoBtn').onclick = () => {
     const p = currentPhoto(); if (!p) return;
@@ -653,15 +710,24 @@ function wire() {
   overlay.addEventListener('pointerup', onPointerUp);
   overlay.addEventListener('pointercancel', onPointerUp);
 
-  // Drop a photo onto the canvas
-  const wrap = $('canvasWrap');
-  wrap.addEventListener('dragover', e => { e.preventDefault(); wrap.classList.add('drop'); });
-  wrap.addEventListener('dragleave', () => wrap.classList.remove('drop'));
-  wrap.addEventListener('drop', e => {
-    e.preventDefault(); wrap.classList.remove('drop');
-    const f = e.dataTransfer.files[0];
-    if (f && f.type.startsWith('image/') && state.brand.cards[current().type].photo) onFile(f);
-  });
+  // Drop photos: on the canvas or the photo button (current slide), on a
+  // thumbnail (that slide), or on the strip's empty space (new slides at the end).
+  // Several files at once become consecutive photo slides.
+  const zone = (el, getIndex) => {
+    el.addEventListener('dragover', e => { if (!isFileDrag(e)) return; e.preventDefault(); el.classList.add('drop'); });
+    el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) el.classList.remove('drop'); });
+    el.addEventListener('drop', e => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault(); e.stopPropagation(); el.classList.remove('drop');
+      placePhotos(e.dataTransfer.files, getIndex(e));
+    });
+  };
+  zone($('canvasWrap'), () => state.sel);
+  $('canvasWrap').dataset.drop = t().dropPhoto;
+  zone($('photoField'), () => state.sel);
+  // Never let a stray drop open the image in the tab.
+  document.addEventListener('dragover', e => { if (isFileDrag(e)) e.preventDefault(); });
+  document.addEventListener('drop', e => { if (isFileDrag(e)) e.preventDefault(); });
 
   $('guidesToggle').onclick = () => {
     state.guides = !state.guides;

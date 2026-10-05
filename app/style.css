@@ -98,7 +98,11 @@ button:focus-visible, input:focus-visible, .text-input:focus-visible { outline: 
 /* ── stage ── */
 .stage { grid-area: stage; position: relative; display: flex; flex-direction: column; padding: 20px; min-width: 0; min-height: 0; }
 .canvas-wrap { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
-.canvas-wrap.drop { outline: 2px dashed var(--muted); outline-offset: -8px; border-radius: var(--r); }
+.canvas-wrap.drop { outline: 2px dashed var(--text); outline-offset: -8px; border-radius: var(--r); }
+.canvas-wrap.drop::after { content: attr(data-drop); position: absolute; z-index: 3; background: rgba(0,0,0,.75); padding: 10px 16px; border-radius: 99px; pointer-events: none; }
+.photo-field.drop .btn { border-color: var(--text); border-style: dashed; }
+.thumb.drop-photo { border-color: var(--text); border-style: dashed; }
+.strip.drop-end { box-shadow: inset -4px 0 0 var(--text); }
 #preview, #overlay { position: absolute; }
 #overlay { cursor: grab; touch-action: none; }
 #overlay.dragging { cursor: grabbing; }

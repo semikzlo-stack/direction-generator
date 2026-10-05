@@ -210,6 +210,32 @@ with sync_playwright() as p:
     page.click('.thumb >> nth=0'); page.keyboard.press('Delete')
     check(st('s.deck.slides[0].part') == 0, 'Delete key leaves the cover alone')
 
+    # Drag & drop photos from the desktop
+    page.evaluate("window.__dg.state.dirty = false"); page.click('#newBtn')
+    drop = '''async ([sel, names]) => {
+      const dt = new DataTransfer();
+      for (const n of names) {
+        const b = await (await fetch('/tests/out/' + n)).blob();
+        dt.items.add(new File([b], n, { type: 'image/jpeg' }));
+      }
+      const el = document.querySelector(sel);
+      const r = el.getBoundingClientRect();
+      const opts = { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+      el.dispatchEvent(new DragEvent('dragover', opts));
+      el.dispatchEvent(new DragEvent('drop', opts));
+    }'''
+    page.evaluate(drop, ['#overlay', ['photo_a.jpg']])
+    page.wait_for_function('window.__dg.state.deck.slides[0].photoId && window.__dg.state.deck.photos[window.__dg.state.deck.slides[0].photoId]?.image')
+    check(st('s.deck.slides.length') == 3, 'drop on the canvas puts the photo on the current slide')
+    page.evaluate(drop, ['.thumb:nth-child(2)', ['photo_a.jpg', 'photo_b.jpg']])
+    page.wait_for_function('window.__dg.state.deck.slides.length === 5')
+    check(st('s.deck.slides.map(x => x.type).join()') == 'image-header,paragraph,image,image,image', 'two files dropped on a paragraph become two new photo slides after it')
+    check(st('s.sel') == 2, 'first dropped photo is selected')
+    check(st('Object.values(s.deck.photos).filter(p => p.image).length') == 3, 'all dropped photos loaded')
+    page.evaluate(drop, ['#strip', ['photo_b.jpg']])
+    page.wait_for_function('window.__dg.state.deck.slides.length === 6')
+    check(st('s.deck.slides[5].type') == 'image' and st('!!s.deck.photos[s.deck.slides[5].photoId].image'), 'drop on empty strip adds a photo slide at the end')
+
     # Mobile layout sanity
     page.set_viewport_size({'width': 390, 'height': 844})
     page.wait_for_timeout(200)
