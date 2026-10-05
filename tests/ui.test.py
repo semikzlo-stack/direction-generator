@@ -44,7 +44,7 @@ with sync_playwright() as p:
     page.fill('#textInput', '"Ostatni zamek" w księgarni Bęc Zmiany')
     page.set_input_files('#fileInput', str(OUT / 'photo_a.jpg'))
     page.wait_for_function('Object.keys(window.__dg.state.deck.photos).length === 1')
-    check(page.inner_text('#lineCounter').startswith('2 / 4'), 'header line counter shows 2 / 4')
+    page.wait_for_timeout(100); check(page.inner_text('#lineCounter') == '2/4', 'header line counter shows 2/4')
 
     # Drag the photo
     box = page.locator('#overlay').bounding_box()
@@ -52,8 +52,22 @@ with sync_playwright() as p:
     page.mouse.down(); page.mouse.move(box['x'] + box['width']/2, box['y'] + box['height']/2 + 80, steps=5); page.mouse.up()
     check(st('Object.values(s.deck.photos)[0].offY') > 0, 'dragging pans the photo')
 
-    # Slide 2: paragraph
+    # Slide 2: paragraph, with an italic word via the I button
     page.click('.thumb >> nth=1')
+    page.fill('#textInput', '„Ostatni zamek” pojawił się na witrynie sklepu Fundacji Bęc Zmiana. A wokół moc niezwykle pięknie zaprojektowanych książek.')
+    page.evaluate('''() => {
+      const el = document.getElementById('textInput'); el.focus();
+      const tn = el.firstChild; const i = tn.nodeValue.indexOf('Bęc Zmiana');
+      const r = document.createRange(); r.setStart(tn, i); r.setEnd(tn, i + 'Bęc Zmiana'.length);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    }''')
+    page.click('#italicBtn')
+    page.wait_for_timeout(100)
+    check('*Bęc Zmiana*' in st('s.deck.slides[1].text'), 'italic button marks the selection as italic')
+    check(page.locator('#italicBtn.active').count() == 1, 'italic button shows active state')
+    page.keyboard.press('Control+End'); page.keyboard.press('Enter'); page.keyboard.type('Nowa linia')
+    page.wait_for_timeout(100)
+    check(st('s.deck.slides[1].text').endswith('\nNowa linia'), 'Enter adds a line break')
     page.fill('#textInput', '„Ostatni zamek” pojawił się na witrynie sklepu Fundacji Bęc Zmiana. A wokół moc niezwykle pięknie zaprojektowanych książek.')
     check(page.locator('#photoField').is_hidden(), 'paragraph card hides photo controls')
 
@@ -105,8 +119,8 @@ with sync_playwright() as p:
     check(st('s.deck.lineColorId !== s.deck.bgColorId'), 'line and background differ')
     page.click('#bgColors button[data-color=mint-teal]')
     check(st('s.deck.bgColorId') == 'mint-teal' and st('s.deck.lineColorId') != 'mint-teal', 'picking the line color as background swaps them')
-    page.click('#draftsBtn')
-    page.click('#draftsList .draft >> nth=0 >> button >> nth=0')
+    check(page.locator('#draftsList .draft').count() == 1, 'saved draft appears in the drafts column')
+    page.click('#draftsList .draft >> nth=0')
     page.wait_for_function('Object.keys(window.__dg.state.deck.photos).length === 2')
     check(st('s.deck.slides.length') == 4 and st('s.deck.format') == 'linkedin', 'draft restores slides and format')
     check(st('Object.values(s.deck.photos).every(p => p.image && p.image.width > 0)'), 'draft restores photos')
@@ -116,7 +130,7 @@ with sync_playwright() as p:
     page.click('#addBtn')
     menu = page.inner_text('#addMenu')
     check('Cover' not in menu, f'add menu has no cover option: {menu!r}')
-    check('Photo across two slides' in menu, 'add menu offers the panorama preset')
+    check('Photo on 2 slides' in menu, 'add menu offers the panorama preset')
     page.click('#addMenu button[data-preset=panorama]')
     check(st('s.deck.slides.length') == 5, 'panorama preset adds two slides')
     check(st('s.deck.slides[s.sel].photoId === s.deck.slides[s.sel+1].photoId'), 'panorama slides share one photo')
@@ -137,7 +151,7 @@ with sync_playwright() as p:
     check(page.inner_text('#warnings').strip() == '', 'one-line cover header has no warnings')
     page.screenshot(path=str(OUT / 'ui_split_cover.png'))
     page.click('.thumb >> nth=1')
-    check(page.locator('#coverPartNote').is_visible() and page.locator('#typeField').is_hidden(), 'second half shows a note instead of type switch')
+    check(page.locator('#coverPartNote').is_visible() and page.locator('#typeSeg').is_hidden(), 'second half shows a note instead of type switch')
     check(page.locator('#textField').is_hidden(), 'second half has no text field')
     check(page.is_disabled('#moveRightBtn'), 'cover half cannot move')
     page.click('.thumb >> nth=2')
@@ -146,7 +160,7 @@ with sync_playwright() as p:
     page.click('.thumb >> nth=0')
     page.fill('#textInput', 'Zamczystość w „Vogue” i jeszcze jedna długa linia')
     page.wait_for_timeout(150)
-    check('maximum is 1' in page.inner_text('#warnings'), 'two-line cover header warns (max 1)')
+    check('maximum 1' in page.inner_text('#warnings'), 'two-line cover header warns (max 1)')
     page.click('.thumb >> nth=1'); page.click('#deleteBtn')
     check(st('s.deck.slides[0].type') == 'image-header' and st('s.deck.slides.length') == 6, 'deleting cover half reverts to a regular cover')
 

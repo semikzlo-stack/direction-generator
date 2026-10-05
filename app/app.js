@@ -7,6 +7,7 @@ import { typo, layoutBlock } from '../core/text.js';
 import { slideFilename, makeZip, canvasToBytes, downloadBytes } from '../core/export.js';
 import { saveDraft, listDrafts, getDraft, deleteDraft, serialiseDeck } from '../core/storage.js';
 import { I18N } from './i18n.js';
+import { createTextEditor } from './editor.js';
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -35,8 +36,13 @@ async function boot() {
   buildColors();
   buildTypeSeg();
   buildAddMenu();
+  state.editor = createTextEditor($('textInput'), {
+    onInput: onTextInput,
+    onSelection: on => { $('italicBtn').classList.toggle('active', on); $('italicBtn').setAttribute('aria-pressed', on); },
+  });
   wire();
   startNewDeck();
+  renderDrafts();
   applyLang(state.lang);
   new ResizeObserver(() => { sizeCanvas(); renderMain(); }).observe($('canvasWrap'));
 }
@@ -163,7 +169,7 @@ function refreshPanel() {
   const slide = current();
   const card = state.brand.cards[slide.type];
   const n = state.deck.slides.length;
-  $('slideTitle').textContent = t().of(state.sel + 1, n);
+  $('slideTitle').textContent = `${state.sel + 1} / ${n}`;
   $('moveLeftBtn').disabled = !canMove(state.deck, state.sel, -1);
   $('moveRightBtn').disabled = !canMove(state.deck, state.sel, 1);
 
@@ -172,12 +178,15 @@ function refreshPanel() {
     b.hidden = !allowed.includes(b.dataset.type);
     b.classList.toggle('active', b.dataset.type === slide.type);
   });
-  $('typeField').hidden = allowed.length === 0;
+  $('typeSeg').hidden = allowed.length === 0;
   $('coverPartNote').hidden = slide.part !== 1;
 
   const hasText = !!card.text && (card.text.onPart == null || card.text.onPart === (slide.part || 0));
   $('textField').hidden = !hasText;
-  if (hasText && $('textInput').value !== (slide.text || '')) $('textInput').value = slide.text || '';
+  if (hasText) {
+    state.editor.setValue(slide.text || '');
+    $('textInput').dataset.placeholder = card.text.role === 'paragraph' ? t().phParagraph : t().phHeader;
+  }
 
   $('photoField').hidden = !card.photo;
   if (card.photo) {
@@ -197,7 +206,6 @@ function refreshPanel() {
     const lay = photoLayout(state.brand, state.deck, state.sel);
     $('spanHint').textContent = lay && lay.span > 1 ? t().spanHint(lay.part + 1, lay.span) : '';
   }
-  $('dragHint').classList.toggle('show', !!(card.photo && currentPhoto()));
 }
 
 function renderPanelStatus() {
@@ -466,33 +474,50 @@ async function doSaveDraft() {
   });
   state.dirty = false;
   toast(t().saved);
+  renderDrafts();
 }
 
-async function openDrafts() {
-  const list = (await listDrafts(BRAND_ID)).sort((a, b) => b.updatedAt - a.updatedAt);
+let pendingDelete = null;
+
+/** Drafts column: newest first, the open draft highlighted. */
+async function renderDrafts() {
+  let list = [];
+  try { list = (await listDrafts(BRAND_ID)).sort((a, b) => b.updatedAt - a.updatedAt); }
+  catch (e) { console.warn('Drafts unavailable:', e); }
   const box = $('draftsList');
   box.innerHTML = '';
-  if (!list.length) box.innerHTML = `<p class="empty">${t().noDrafts}</p>`;
   for (const d of list) {
-    const row = document.createElement('div');
-    row.className = 'draft';
+    const item = document.createElement('div');
+    item.className = 'draft' + (d.id === state.draftId ? ' current' : '');
+    item.tabIndex = 0;
+    item.setAttribute('role', 'button');
     const img = document.createElement('img');
+    img.alt = '';
     if (d.thumb) img.src = URL.createObjectURL(d.thumb);
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.innerHTML = `<strong></strong><span></span>`;
-    meta.querySelector('strong').textContent = d.title || t().untitled;
-    meta.querySelector('span').textContent = new Date(d.updatedAt).toLocaleString(state.lang);
-    const open = document.createElement('button');
-    open.className = 'btn'; open.textContent = t().open;
-    open.onclick = () => loadDraft(d.id);
+    const title = document.createElement('span');
+    title.className = 'title'; title.textContent = d.title || t().untitled;
+    const date = document.createElement('span');
+    date.className = 'date';
+    date.textContent = new Date(d.updatedAt).toLocaleString(state.lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     const del = document.createElement('button');
-    del.className = 'btn ghost'; del.textContent = t().remove;
-    del.onclick = async () => { if (confirm(t().confirmDeleteDraft)) { await deleteDraft(d.id); openDrafts(); } };
-    row.append(img, meta, open, del);
-    box.append(row);
+    del.className = 'del' + (pendingDelete === d.id ? ' confirm' : '');
+    del.textContent = pendingDelete === d.id ? t().remove : '✕';
+    del.setAttribute('aria-label', t().remove);
+    // Two clicks to delete: the first arms the button, the second deletes.
+    del.onclick = async e => {
+      e.stopPropagation();
+      if (pendingDelete === d.id) {
+        await deleteDraft(d.id);
+        if (state.draftId === d.id) state.draftId = null;
+        pendingDelete = null;
+      } else pendingDelete = d.id;
+      renderDrafts();
+    };
+    item.onclick = () => loadDraft(d.id);
+    item.onkeydown = e => { if (e.key === 'Enter') loadDraft(d.id); };
+    item.append(img, title, date, del);
+    box.append(item);
   }
-  $('draftsModal').hidden = false;
 }
 
 async function loadDraft(id) {
@@ -507,8 +532,9 @@ async function loadDraft(id) {
   state.draftId = d.id;
   state.sel = 0;
   state.dirty = false;
-  $('draftsModal').hidden = true;
+  pendingDelete = null;
   refreshAll();
+  renderDrafts();
 }
 
 // ───────────────────────── misc UI ─────────────────────────
@@ -531,7 +557,16 @@ function applyLang(lang) {
   document.querySelectorAll('#typeSeg button, #addMenu button[data-type]').forEach(b => { b.textContent = t().types[b.dataset.type]; });
   document.querySelectorAll('#addMenu button[data-preset]').forEach(b => { b.textContent = t().presets[b.dataset.preset]; });
   document.querySelectorAll('#lang button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
-  if (state.deck) { refreshPanel(); renderPanelStatus(); }
+  if (state.deck) { refreshPanel(); renderPanelStatus(); renderDrafts(); }
+}
+
+let textRaf = false;
+function onTextInput(value) {
+  current().text = value;
+  state.dirty = true;
+  if (textRaf) return;
+  textRaf = true;
+  requestAnimationFrame(() => { textRaf = false; renderMain(); renderStrip(); });
 }
 
 function wire() {
@@ -540,14 +575,8 @@ function wire() {
   });
   document.querySelectorAll('#lang button').forEach(b => b.onclick = () => applyLang(b.dataset.lang));
 
-  let textRaf = false;
-  $('textInput').addEventListener('input', e => {
-    current().text = e.target.value;
-    state.dirty = true;
-    if (textRaf) return;
-    textRaf = true;
-    requestAnimationFrame(() => { textRaf = false; renderMain(); renderStrip(); });
-  });
+  $('italicBtn').addEventListener('mousedown', e => e.preventDefault()); // keep the text selection
+  $('italicBtn').onclick = () => state.editor.toggleItalic();
 
   $('uploadBtn').onclick = () => $('fileInput').click();
   $('fileInput').onchange = e => { onFile(e.target.files[0]); e.target.value = ''; };
@@ -579,7 +608,12 @@ function wire() {
     if (f && f.type.startsWith('image/') && state.brand.cards[current().type].photo) onFile(f);
   });
 
-  $('guidesToggle').onchange = e => { state.guides = e.target.checked; drawOverlay(); };
+  $('guidesToggle').onclick = () => {
+    state.guides = !state.guides;
+    $('guidesToggle').classList.toggle('active', state.guides);
+    $('guidesToggle').setAttribute('aria-pressed', state.guides);
+    drawOverlay();
+  };
   $('moveLeftBtn').onclick = () => moveSlide(-1);
   $('moveRightBtn').onclick = () => moveSlide(1);
   $('deleteBtn').onclick = deleteSlide;
@@ -587,19 +621,15 @@ function wire() {
   $('addBtn').onclick = e => { e.stopPropagation(); $('addMenu').classList.toggle('open'); };
   document.addEventListener('click', e => { if (!$('addMenu').contains(e.target)) $('addMenu').classList.remove('open'); });
 
-  $('newBtn').onclick = () => { if (!state.dirty || confirm(t().confirmNew)) startNewDeck(); };
+  $('newBtn').onclick = () => { if (!state.dirty || confirm(t().confirmNew)) { startNewDeck(); renderDrafts(); } };
   $('saveDraftBtn').onclick = doSaveDraft;
-  $('draftsBtn').onclick = openDrafts;
-  $('draftsClose').onclick = () => { $('draftsModal').hidden = true; };
-  $('draftsModal').onclick = e => { if (e.target.id === 'draftsModal') $('draftsModal').hidden = true; };
   $('downloadSlideBtn').onclick = downloadSlide;
   $('downloadAllBtn').onclick = downloadAll;
 
   document.addEventListener('keydown', e => {
-    if (e.target.matches('textarea, input')) return;
+    if (e.target.matches('textarea, input, [contenteditable]')) return;
     if (e.key === 'ArrowLeft') select(state.sel - 1);
     if (e.key === 'ArrowRight') select(state.sel + 1);
-    if (e.key === 'Escape') $('draftsModal').hidden = true;
   });
   window.addEventListener('beforeunload', e => { if (state.dirty) { e.preventDefault(); e.returnValue = ''; } });
 }
