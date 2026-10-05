@@ -1,7 +1,7 @@
 import { loadBrand } from '../core/brand.js';
 import { renderSlide, textStyle, photoLayout } from '../core/render.js';
 import { newDeck, nextPostColors, setPostColor, migrateDeck, syncSpans, photoSlices, deckWarnings, uid,
-  typesFor, addableTypes, setSlideType, insertPreset, canMove, moveGroup, coverRange, groupRange, deleteGroup } from '../core/deck.js';
+  typesFor, addableTypes, setSlideType, insertPreset, canMove, moveGroup, moveGroupTo, isCover, coverRange, groupRange, deleteGroup } from '../core/deck.js';
 import { clampPhoto, ZOOM_MAX } from '../core/photo.js';
 import { typo, layoutBlock } from '../core/text.js';
 import { slideFilename, zipEntryName, postBaseName, makeZip, canvasToBytes, downloadBytes } from '../core/export.js';
@@ -109,16 +109,6 @@ function drawOverlay() {
     ctx.restore();
   }
 
-  // Seams: mark the slide edges where the photo continues onto a neighbour.
-  const lay = photoLayout(state.brand, state.deck, state.sel);
-  if (lay && lay.span > 1) {
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,190,0,.9)';
-    const w = 6 * px, d = lay.dest;
-    if (lay.part > 0) ctx.fillRect(0, d.y, w, d.h);
-    if (lay.part < lay.span - 1) ctx.fillRect(f.width - w, d.y, w, d.h);
-    ctx.restore();
-  }
 }
 
 /** Re-render every thumbnail (cheap: drawn at thumbnail scale). */
@@ -152,14 +142,10 @@ function renderStrip() {
     const num = document.createElement('span');
     num.className = 'num'; num.textContent = i + 1;
     item.append(c, num);
-    if (slideWarnings[i].length) {
-      const b = document.createElement('span');
-      b.className = 'badge'; b.textContent = '!';
-      item.append(b);
-    }
     const [g0, g1] = groupRange(state.deck, i);
-    // One delete button per group, on its first slide.
-    if (i === g0) {
+    const cover = isCover(state.brand, slide);
+    // One delete button per group, on its first slide. Covers stay.
+    if (i === g0 && !cover) {
       const del = document.createElement('span');
       del.className = 'thumb-del'; del.textContent = '✕';
       del.setAttribute('role', 'button');
@@ -167,8 +153,53 @@ function renderStrip() {
       del.onclick = e => { e.stopPropagation(); deleteSlide(i); };
       item.append(del);
     }
+    if (!cover) wireDrag(item, i);
     item.onclick = () => select(i);
     strip.append(item);
+  });
+}
+
+// Drag a thumbnail to reorder; double slides move together.
+let dragFrom = null;
+function wireDrag(item, i) {
+  item.draggable = true;
+  item.addEventListener('dragstart', e => {
+    dragFrom = i;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(i));
+    const [a, b] = groupRange(state.deck, i);
+    [...$('strip').children].forEach((el, k) => el.classList.toggle('dragging', k >= a && k <= b));
+  });
+  item.addEventListener('dragend', () => {
+    dragFrom = null;
+    [...$('strip').children].forEach(el => el.classList.remove('dragging', 'drop-before', 'drop-after'));
+  });
+}
+function dropSide(e, el) {
+  const r = el.getBoundingClientRect();
+  return e.clientX < r.left + r.width / 2 ? -1 : 1;
+}
+function wireDropZone() {
+  const strip = $('strip');
+  strip.addEventListener('dragover', e => {
+    if (dragFrom == null) return;
+    const el = e.target.closest('.thumb'); if (!el) return;
+    e.preventDefault();
+    const side = dropSide(e, el);
+    [...strip.children].forEach(x => x.classList.remove('drop-before', 'drop-after'));
+    el.classList.add(side < 0 ? 'drop-before' : 'drop-after');
+  });
+  strip.addEventListener('drop', e => {
+    const el = e.target.closest('.thumb');
+    if (dragFrom == null || !el) return;
+    e.preventDefault();
+    const target = [...strip.children].indexOf(el);
+    const sel = state.deck.slides[state.sel];
+    const at = moveGroupTo(state.deck, dragFrom, target, dropSide(e, el), state.brand);
+    dragFrom = null;
+    if (at < 0) return refreshAll();
+    state.sel = state.deck.slides.indexOf(sel);
+    changed();
   });
 }
 
@@ -179,11 +210,6 @@ function refreshPanel() {
   const slide = current();
   const card = state.brand.cards[slide.type];
   const n = state.deck.slides.length;
-  $('slideTitle').textContent = `${state.sel + 1} / ${n}`;
-  const [g0, g1] = groupRange(state.deck, state.sel);
-  $('deleteBtn').title = g1 > g0 ? t().deleteBoth : t().deleteSlide;
-  $('moveLeftBtn').disabled = !canMove(state.deck, state.sel, -1, state.brand);
-  $('moveRightBtn').disabled = !canMove(state.deck, state.sel, 1, state.brand);
 
   const allowed = typesFor(state.brand, state.deck, state.sel);
   document.querySelectorAll('#typeSeg button').forEach(b => {
@@ -236,7 +262,7 @@ function renderPanelStatus() {
   // Warnings
   const box = $('warnings');
   const ws = [...(slideWarnings[state.sel] || []), ...deckWarnings(state.deck).filter(w => w.slide === state.sel)];
-  const uniq = [...new Map(ws.map(w => [w.code, w])).values()];
+  const uniq = [...new Map(ws.filter(isRealWarning).map(w => [w.code, w])).values()];
   box.innerHTML = '';
   for (const w of uniq) {
     const msg = t().w[w.code];
@@ -246,6 +272,10 @@ function renderPanelStatus() {
     box.append(p);
   }
 }
+
+/** Empty fields aren't problems worth a message; overflowing text is. */
+const QUIET = new Set(['no-photo', 'no-text']);
+const isRealWarning = w => !QUIET.has(w.code);
 
 function refreshAll() {
   syncSpans(state.deck);
@@ -340,6 +370,7 @@ function moveSlide(dir) {
 
 /** Delete a slide; double slides (split cover, photo on 2 slides) go together. */
 function deleteSlide(index = state.sel) {
+  if (isCover(state.brand, state.deck.slides[index])) return;
   const [from] = groupRange(state.deck, index);
   if (!deleteGroup(state.deck, index)) return toast(t().deleteLast);
   state.sel = Math.min(from, state.deck.slides.length - 1);
@@ -444,7 +475,7 @@ async function downloadSlide() {
 
 async function downloadAll() {
   renderStrip();
-  const bad = slideWarnings.filter(w => w && w.length).length;
+  const bad = slideWarnings.filter(w => w && w.some(isRealWarning)).length;
   if (bad && !confirm(t().exportWithIssues(bad))) return;
   const files = [];
   for (let i = 0; i < state.deck.slides.length; i++) {
@@ -481,7 +512,6 @@ async function doSaveDraft() {
   renderDrafts();
 }
 
-let pendingDelete = null;
 
 /** Drafts column: newest first, the open draft highlighted. */
 async function renderDrafts() {
@@ -504,17 +534,12 @@ async function renderDrafts() {
     date.className = 'date';
     date.textContent = new Date(d.updatedAt).toLocaleString(state.lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     const del = document.createElement('button');
-    del.className = 'del' + (pendingDelete === d.id ? ' confirm' : '');
-    del.textContent = pendingDelete === d.id ? t().remove : '✕';
+    del.className = 'del'; del.textContent = '✕';
     del.setAttribute('aria-label', t().remove);
-    // Two clicks to delete: the first arms the button, the second deletes.
     del.onclick = async e => {
       e.stopPropagation();
-      if (pendingDelete === d.id) {
-        await deleteDraft(d.id);
-        if (state.draftId === d.id) state.draftId = null;
-        pendingDelete = null;
-      } else pendingDelete = d.id;
+      await deleteDraft(d.id);
+      if (state.draftId === d.id) state.draftId = null;
       renderDrafts();
     };
     item.onclick = () => loadDraft(d.id);
@@ -536,7 +561,6 @@ async function loadDraft(id) {
   state.draftId = d.id;
   state.sel = 0;
   state.dirty = false;
-  pendingDelete = null;
   refreshAll();
   renderDrafts();
 }
@@ -618,9 +642,7 @@ function wire() {
     $('guidesToggle').setAttribute('aria-pressed', state.guides);
     drawOverlay();
   };
-  $('moveLeftBtn').onclick = () => moveSlide(-1);
-  $('moveRightBtn').onclick = () => moveSlide(1);
-  $('deleteBtn').onclick = () => deleteSlide();
+  wireDropZone();
 
   $('addBtn').onclick = e => { e.stopPropagation(); $('addMenu').classList.toggle('open'); };
   document.addEventListener('click', e => { if (!$('addMenu').contains(e.target)) $('addMenu').classList.remove('open'); });

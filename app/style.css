@@ -71,7 +71,7 @@ button:focus-visible, input:focus-visible, .text-input:focus-visible { outline: 
 
 .text-field { display: flex; flex-direction: column; gap: 6px; }
 .text-tools { display: flex; align-items: center; justify-content: space-between; }
-.icon.italic { font-family: "Mabry Pro", serif; font-size: 15px; }
+.icon.italic { font: italic 700 17px/1 Georgia, "Times New Roman", serif; }
 .icon.italic.active { background: var(--text); color: #111; border-color: var(--text); }
 .counter { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .counter.bad { color: var(--warn); }
@@ -112,9 +112,8 @@ button:focus-visible, input:focus-visible, .text-input:focus-visible { outline: 
 .draft img { width: 100%; border-radius: 3px; display: block; background: var(--line); }
 .draft .title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .draft .date { font-size: 11px; color: var(--muted); }
-.draft .del { position: absolute; right: 8px; top: 8px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.65); font-size: 11px; opacity: 0; }
-.draft:hover .del, .draft .del:focus-visible { opacity: 1; }
-.draft .del.confirm { opacity: 1; width: auto; padding: 0 8px; border-radius: 99px; background: var(--danger); color: #111; }
+.draft .del { position: absolute; right: 8px; top: 8px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 11px; }
+.draft .del:hover { background: var(--danger); color: #111; }
 
 /* ── strip ── */
 .strip-wrap { grid-area: strip; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); min-width: 0; }
@@ -123,10 +122,13 @@ button:focus-visible, input:focus-visible, .text-input:focus-visible { outline: 
 .thumb.selected { border-color: var(--text); }
 .thumb canvas { display: block; border-radius: 2px; }
 .thumb .num { position: absolute; left: 4px; top: 4px; line-height: 1; font-size: 11px; background: rgba(0,0,0,.55); padding: 2px 5px; border-radius: 3px; }
-.thumb .badge { position: absolute; right: 4px; top: 4px; line-height: 16px; width: 16px; height: 16px; font-size: 11px; background: var(--warn); color: #111; border-radius: 50%; }
-.thumb-del { position: absolute; right: 4px; bottom: 4px; width: 20px; height: 20px; line-height: 20px; text-align: center; font-size: 10px; border-radius: 50%; background: rgba(0,0,0,.65); color: #fff; opacity: 0; cursor: pointer; }
-.thumb:hover .thumb-del, .thumb.selected .thumb-del { opacity: 1; }
+
+.thumb-del { position: absolute; right: 4px; top: 4px; width: 20px; height: 20px; line-height: 20px; text-align: center; font-size: 10px; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
 .thumb-del:hover { background: var(--danger); color: #111; }
+.thumb[draggable="true"] { cursor: grab; }
+.thumb.dragging { opacity: .4; }
+.thumb.drop-before { box-shadow: -4px 0 0 var(--text); }
+.thumb.drop-after { box-shadow: 4px 0 0 var(--text); }
 .thumb.span-right { margin-right: -6px; }
 .thumb.span-right::after, .thumb.span-left::before { content: ""; position: absolute; top: 18%; bottom: 18%; width: 3px; background: var(--warn); border-radius: 2px; }
 .thumb.span-right::after { right: -2px; }

@@ -115,8 +115,9 @@ export function coverRange(deck) {
 export function typesFor(brand, deck, index) {
   const slide = deck.slides[index];
   if (slide.part === 1) return [];                // second half of a split cover
+  // Slide 1 is always a cover; covers appear nowhere else.
   return Object.entries(brand.cards)
-    .filter(([, c]) => !c.firstOnly || index === 0)
+    .filter(([, c]) => index === 0 ? c.firstOnly : !c.firstOnly)
     .map(([type]) => type);
 }
 
@@ -172,7 +173,7 @@ export function insertPreset(brand, deck, name, index) {
 }
 
 /** Is this slide a cover (a first-only card)? */
-function isCover(brand, slide) {
+export function isCover(brand, slide) {
   if (slide.part != null) return true;
   const card = brand && brand.cards[slide.type];
   return !!(card && card.firstOnly);
@@ -228,4 +229,24 @@ export function deleteGroup(deck, index) {
   for (const id of Object.keys(deck.photos)) if (!used.has(id)) delete deck.photos[id];
   syncSpans(deck);
   return true;
+}
+
+/**
+ * Drag & drop: move the group of slide `from` before (side < 0) or after
+ * (side > 0) the group of slide `target`. Covers never move and nothing lands
+ * in front of them. Returns the new index of the moved group's first slide,
+ * or -1 if the move is not allowed.
+ */
+export function moveGroupTo(deck, from, target, side, brand) {
+  const s = deck.slides;
+  if (isCover(brand, s[from])) return -1;
+  const [a, b] = groupRange(deck, from);
+  let [c, d] = groupRange(deck, target);
+  if (target >= a && target <= b) return a;           // dropped on itself
+  if (isCover(brand, s[target])) side = 1;            // never in front of a cover
+  let at = side < 0 ? c : d + 1;                      // position in the original list
+  const block = s.splice(a, b - a + 1);
+  if (at > a) at -= block.length;
+  s.splice(at, 0, ...block);
+  return at;
 }

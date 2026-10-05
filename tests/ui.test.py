@@ -38,6 +38,7 @@ with sync_playwright() as p:
 
     st = lambda js: page.evaluate(f'(() => {{ const s = window.__dg.state; return {js}; }})()')
     check(st('s.deck.slides.length') == 3, 'new deck has 3 slides (header, paragraph, photo)')
+    check(page.inner_text('#warnings').strip() == '', 'no "add text / add photo" hints on an empty post')
     check(st('s.deck.slides.map(x=>x.type).join()') == 'image-header,paragraph,image', 'default story order')
 
     # Slide 1: header + photo
@@ -88,7 +89,7 @@ with sync_playwright() as p:
     page.fill('#textInput', 'Bardzo długi nagłówek, który na pewno nie zmieści się w czterech liniach tekstu na zdjęciu, bo jest za długi i ciągnie się dalej')
     page.wait_for_timeout(150); print('   warnings:', repr(page.inner_text('#warnings')))
     check('Shorten' in page.inner_text('#warnings'), 'too-long header shows a warning')
-    check(page.locator('.thumb >> nth=0').locator('.badge').count() == 1, 'thumbnail shows a warning badge')
+    check(page.locator('.badge').count() == 0, 'no warning badges on thumbnails')
     page.fill('#textInput', '"Ostatni zamek" w księgarni Bęc Zmiany')
     page.wait_for_timeout(150); print('   warnings after:', repr(page.inner_text('#warnings')))
     check(page.inner_text('#warnings').strip() == '', 'warning clears after shortening')
@@ -142,9 +143,10 @@ with sync_playwright() as p:
     check('Part 1 of 2' in page.inner_text('#spanHint'), 'panorama shows part 1 of 2')
 
     page.click('.thumb >> nth=2')
-    check(page.locator('#typeSeg button[data-type=cover-split]').is_hidden(), 'cover type hidden on slide 3')
+    check(page.locator('#typeSeg button[data-type=cover-split]').is_hidden() and page.locator('#typeSeg button[data-type=image-header]').is_hidden(), 'covers not offered on slide 3')
     page.click('.thumb >> nth=0')
-    check(page.locator('#typeSeg button[data-type=cover-split]').is_visible(), 'cover type offered on slide 1')
+    shown = page.evaluate("[...document.querySelectorAll('#typeSeg button')].filter(b => !b.hidden).map(b => b.dataset.type)")
+    check(shown == ['image-header', 'cover-split'], f'slide 1 offers only the two covers: {shown}')
     page.click('#typeSeg button[data-type=cover-split]')
     check(st('s.deck.slides.length') == 6, 'split cover adds its second half')
     page.fill('#textInput', 'Zamczystość w „Vogue”')
@@ -156,26 +158,35 @@ with sync_playwright() as p:
     page.click('.thumb >> nth=1')
     check(page.locator('#coverPartNote').is_visible() and page.locator('#typeSeg').is_hidden(), 'second half shows a note instead of type switch')
     check(page.locator('#textField').is_hidden(), 'second half has no text field')
-    check(page.is_disabled('#moveRightBtn'), 'cover half cannot move')
-    page.click('.thumb >> nth=2')
-    check(page.is_disabled('#moveLeftBtn'), 'slide 3 cannot move into the cover')
-    page.click('#addBtn'); page.click('#addMenu button[data-type=paragraph]')
+    check(page.locator('.thumb >> nth=0').locator('.thumb-del').count() == 0 and page.locator('.thumb >> nth=1').locator('.thumb-del').count() == 0, 'covers have no delete button')
+    check(page.get_attribute('.thumb >> nth=0', 'draggable') is None, 'covers are not draggable')
+
+    # Drag: the paragraph (slide 5) onto the left of the panorama (slide 3) → it lands before the panorama
+    para = st('s.deck.slides.findIndex(x => x.type === "paragraph")')
+    page.drag_and_drop(f'.thumb >> nth={para}', '.thumb >> nth=2', target_position={'x': 5, 'y': 60})
+    check(st('s.deck.slides.map(x => x.type).join()') == 'cover-split,cover-split,paragraph,image,image,image', 'drag reorders slides')
+    # Drag the paragraph in front of the cover → it stays after the cover
+    page.drag_and_drop('.thumb >> nth=2', '.thumb >> nth=0', target_position={'x': 5, 'y': 60})
+    check(st('s.deck.slides[0].part') == 0 and st('s.deck.slides[2].type') == 'paragraph', 'nothing lands in front of the cover')
+    # Drag one half of the panorama → both halves move together
+    page.drag_and_drop('.thumb >> nth=4', '.thumb >> nth=2', target_position={'x': 5, 'y': 60})
+    check(st('s.deck.slides.map(x => x.type).join()') == 'cover-split,cover-split,image,image,paragraph,image', 'panorama moves as a pair')
+    check(st('s.deck.slides[2].photoId === s.deck.slides[3].photoId'), 'panorama stays intact after the move')
+
     page.click('.thumb >> nth=0')
     page.fill('#textInput', 'Zamczystość w „Vogue” i jeszcze jedna długa linia')
     page.wait_for_timeout(150)
     check('maximum 1' in page.inner_text('#warnings'), 'two-line cover header warns (max 1)')
-    n0 = st('s.deck.slides.length')
-    page.click('.thumb >> nth=1'); page.click('#deleteBtn')
-    check(st('s.deck.slides.length') == n0 - 2 and st('s.deck.slides[0].part') is None, 'deleting a cover half deletes both halves')
-    # Panorama is now slides 2–3 (after the default header slide): delete via the thumbnail button
-    pano = st('s.deck.slides.findIndex((x, i, a) => a[i+1] && x.photoId && x.photoId === a[i+1].photoId)')
+    page.fill('#textInput', 'Zamczystość')
+
     n1 = st('s.deck.slides.length')
-    page.hover(f'.thumb >> nth={pano}')
-    page.click(f'.thumb >> nth={pano} >> .thumb-del')
+    page.click('.thumb >> nth=2 >> .thumb-del')
     check(st('s.deck.slides.length') == n1 - 2, 'deleting a photo on 2 slides deletes both slides')
-    check(page.locator('.thumb .thumb-del').count() == st('s.deck.slides.length'), 'one delete button per slide group')
-    page.click('.thumb >> nth=0'); page.keyboard.press('Delete')
+    check(page.locator('.thumb .thumb-del').count() == st('s.deck.slides.length') - 2, 'one delete button per non-cover slide')
+    page.click('.thumb >> nth=2'); page.keyboard.press('Delete')
     check(st('s.deck.slides.length') == n1 - 3, 'Delete key removes the selected slide')
+    page.click('.thumb >> nth=0'); page.keyboard.press('Delete')
+    check(st('s.deck.slides[0].part') == 0, 'Delete key leaves the cover alone')
 
     # Mobile layout sanity
     page.set_viewport_size({'width': 390, 'height': 844})

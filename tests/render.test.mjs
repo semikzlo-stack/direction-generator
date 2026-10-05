@@ -121,6 +121,7 @@ for (const format of ['instagram', 'linkedin']) {
   assert.ok(!addableTypes(brand).includes('cover-split'), 'cover is not addable');
   assert.ok(!typesFor(brand, deck, 2).includes('cover-split'), 'cover only on slide 1');
   assert.ok(!typesFor(brand, deck, 2).includes('image-header'), 'photo + header only on slide 1');
+  assert.deepEqual(typesFor(brand, deck, 0), ['image-header', 'cover-split'], 'slide 1 is always a cover');
   assert.ok(!addableTypes(brand).includes('image-header'), 'photo + header is not addable');
   assert.deepEqual(typesFor(brand, deck, 1), [], 'second half has no type switch');
   assert.ok(!canMove(deck, 2, -1) && !canMove(deck, 0, 1), 'cover slides stay first');
