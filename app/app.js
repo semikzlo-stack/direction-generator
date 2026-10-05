@@ -8,6 +8,7 @@ import { slideFilename, zipEntryName, postBaseName, makeZip, canvasToBytes, down
 import { saveDraft, listDrafts, getDraft, deleteDraft, serialiseDeck } from '../core/storage.js';
 import { I18N } from './i18n.js';
 import { createTextEditor } from './editor.js';
+import { passGate } from './gate.js';
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -30,7 +31,9 @@ const t = () => I18N[state.lang];
 
 // ───────────────────────── boot ─────────────────────────
 async function boot() {
-  state.brand = await loadBrand(`brands/${BRAND_ID}/`);
+  const brandLoad = loadBrand(`brands/${BRAND_ID}/`);   // load while the password page is up
+  await passGate(t());
+  state.brand = await brandLoad;
   $('brandName').textContent = state.brand.name;
   document.title = `${state.brand.name} · Post generator`;
   buildColors();

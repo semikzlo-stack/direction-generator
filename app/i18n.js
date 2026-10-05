@@ -1,5 +1,6 @@
 export const I18N = {
   pl: {
+    gateTitle: 'Generator postów', gatePlaceholder: 'Hasło', gateBtn: 'Wejdź', gateWrong: 'Nieprawidłowe hasło.',
     newPost: 'Nowy post', downloadSlide: 'Pobierz slajd', downloadAll: 'Pobierz wszystkie slajdy',
     saveDraft: 'Zapisz wersję', guides: 'Strefa bezpieczna',
     lineColor: 'Linia', bgColor: 'Tło',
@@ -27,6 +28,7 @@ export const I18N = {
     confirmNew: 'Zacząć nowy post? Niezapisane zmiany przepadną.',
   },
   en: {
+    gateTitle: 'Post generator', gatePlaceholder: 'Password', gateBtn: 'Enter', gateWrong: 'Wrong password.',
     newPost: 'New post', downloadSlide: 'Download slide', downloadAll: 'Download all slides',
     saveDraft: 'Save draft', guides: 'Safe zone',
     lineColor: 'Line', bgColor: 'Background',

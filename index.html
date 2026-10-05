@@ -6,7 +6,15 @@
   <title>Post generator</title>
   <link rel="stylesheet" href="app/style.css">
 </head>
-<body>
+<body class="locked">
+  <div class="gate" id="gate" hidden>
+    <form class="gate-form" id="gateForm" autocomplete="off">
+      <h1 id="gateTitle">Post generator</h1>
+      <input type="password" id="gateInput" autocomplete="current-password" aria-label="Password">
+      <button class="btn primary" id="gateBtn" type="submit">Enter</button>
+      <p class="gate-error" id="gateError" role="alert"></p>
+    </form>
+  </div>
   <header class="topbar">
     <div class="brand-name" id="brandName">Post generator</div>
     <div class="spacer"></div>
